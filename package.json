@@ -41,13 +41,11 @@
     "agents",
     "cli"
   ],
-  "bin": {
-    "pi-ensemble": "install.mjs"
-  },
   "files": [
     "index.ts",
     "src/**/*.ts",
-    "*.mjs",
+    "async-retention-discovery-worker.mjs",
+    "inspector-runner.mjs",
     "agents/",
     "skills/**/*",
     "prompts/**/*",

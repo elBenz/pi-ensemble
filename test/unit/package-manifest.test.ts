@@ -47,7 +47,11 @@ test("published extension APIs use supported package entrypoints", async () => {
 
 	assert.deepEqual(packageJson.pi?.extensions, ["./index.ts"]);
 	assert.equal(packageJson.files?.includes("index.ts"), true);
-	assert.equal(packageJson.files?.includes("*.mjs"), true);
+	assert.equal(packageJson.files?.includes("async-retention-discovery-worker.mjs"), true);
+	assert.equal(packageJson.files?.includes("inspector-runner.mjs"), true);
+	assert.equal(packageJson.files?.includes("*.mjs"), false);
+	assert.equal(packageJson.bin, undefined, "published package must not execute the mutable Git clone installer");
+	assert.equal(packageJson.files?.includes("install.mjs"), false);
 	assert.equal(fs.existsSync(path.join(projectRoot, "async-retention-discovery-worker.mjs")), true);
 	assert.equal(
 		fs.readFileSync(path.join(projectRoot, "index.ts"), "utf-8").trim(),
