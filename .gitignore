@@ -2,7 +2,19 @@
 .pi/subagents/
 .pi-subagents/
 .DS_Store
-AGENTS.md
+
+# Local credentials and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+.npmrc.local
+
 node_modules/
 .fallow/
 tmp/

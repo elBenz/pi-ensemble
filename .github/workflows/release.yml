@@ -1,11 +1,12 @@
 name: Release
 
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -13,15 +14,35 @@ concurrency:
 
 jobs:
   publish:
+    if: github.repository == 'elBenz/pi-ensemble'
     runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      - name: Verify release tag
+        shell: bash
+        run: |
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release tag must use stable vX.Y.Z format: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+          package_version="$(node -p "require('./package.json').version")"
+          expected_tag="v${package_version}"
+          if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+            echo "Release tag ${GITHUB_REF_NAME} does not match ${expected_tag}" >&2
+            exit 1
+          fi
       - name: Install devDependencies
         run: npm ci --ignore-scripts
+      - name: Typecheck
+        run: npm run typecheck
       - name: Run tests
         run: npm run test:all
       - name: Publish to npm
