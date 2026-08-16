@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a change or new capability
+title: "feat: "
+labels:
+  - needs-triage
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What concrete problem or limitation should be solved?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe desired behavior without prescribing implementation unless necessary.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or alternatives have you tried?
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add examples, links, or constraints that clarify the request.
