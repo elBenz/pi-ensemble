@@ -13,7 +13,7 @@ import {
 	projectPaneBindingPath,
 	readProjectPaneBinding,
 	type ProjectPaneCommandClient,
-} from "pi-subagents/project-panes";
+} from "pi-ensemble/project-panes";
 
 describe("public project-panes package export", () => {
 	it("exposes the versioned extension-to-extension lifecycle surface", () => {

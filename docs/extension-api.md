@@ -58,14 +58,14 @@ The DTO intentionally never exposes run, async, or tool IDs. Clients must ignore
 
 ## External jobs in FleetView
 
-Use `pi-subagents/external-runs` to publish display-only current-session jobs owned by another extension:
+Use `pi-ensemble/external-runs` to publish display-only current-session jobs owned by another extension:
 
 ```ts
 import {
   registerExternalRun,
   updateExternalRun,
   unregisterExternalRun,
-} from "pi-subagents/external-runs";
+} from "pi-ensemble/external-runs";
 
 registerExternalRun({
   id: "dependency-review",
@@ -94,10 +94,10 @@ External jobs are observational. The caller owns execution, persistence, cancell
 
 ## Launch contract preflight
 
-Use `pi-subagents/preflight` when an extension needs to inspect the resolved child launch contract before deciding whether to run anything:
+Use `pi-ensemble/preflight` when an extension needs to inspect the resolved child launch contract before deciding whether to run anything:
 
 ```ts
-import { resolveSubagentLaunchContract } from "pi-subagents/preflight";
+import { resolveSubagentLaunchContract } from "pi-ensemble/preflight";
 
 const result = await resolveSubagentLaunchContract({
   agent: "reviewer",
@@ -144,7 +144,7 @@ import {
   SUBAGENT_DELEGATION_RESPONSE_EVENT,
   type SubagentDelegationRequest,
   type SubagentDelegationResponse,
-} from "pi-subagents/delegation";
+} from "pi-ensemble/delegation";
 
 const request: SubagentDelegationRequest = {
   requestId: crypto.randomUUID(),
@@ -200,14 +200,14 @@ Constraints:
 - The caller selects a configured agent, but agent discovery and effective tools remain package-owned. A request cannot grant arbitrary tools, and tool restrictions are not an operating-system sandbox.
 - The detached RPC remains async-only; this API is foreground-only.
 
-Unversioned prompt-template payloads with `requestId`, `agent`, `task`, `context`, `model`, and `cwd` are rejected as legacy direct delegation. New integrations must use the structured owned-leaf request above. `pi-subagents/delegation` is the canonical contract for extension integrations.
+Unversioned prompt-template payloads with `requestId`, `agent`, `task`, `context`, `model`, and `cwd` are rejected as legacy direct delegation. New integrations must use the structured owned-leaf request above. `pi-ensemble/delegation` is the canonical contract for extension integrations.
 
 ## Capability ceilings
 
 Parent extensions can enforce an out-of-band, session-scoped capability ceiling without adding a model-visible field to `subagent`:
 
 ```ts
-import { registerSubagentCapabilityCeiling } from "pi-subagents/capability-ceiling";
+import { registerSubagentCapabilityCeiling } from "pi-ensemble/capability-ceiling";
 
 const restriction = registerSubagentCapabilityCeiling({
   sessionId: ctx.sessionManager.getSessionId(),
@@ -241,7 +241,7 @@ Schedules created while a ceiling is active are rejected until durable schedule 
 Other Pi extensions can make their current-session jobs visible to `subagent_wait` through the process-local provider contract:
 
 ```ts
-import { registerBackgroundWorkProvider } from "pi-subagents/background-work";
+import { registerBackgroundWorkProvider } from "pi-ensemble/background-work";
 
 const dispose = registerBackgroundWorkProvider({
   name: "my-background-extension",
@@ -268,7 +268,7 @@ Child processes do not gain provider tools or extensions automatically. Add `sub
 Extensions that own long-running advisor jobs can register a process-local provider for `runner.type: external-job` agents:
 
 ```ts
-import { registerExternalJobProvider } from "pi-subagents/external-job-provider";
+import { registerExternalJobProvider } from "pi-ensemble/external-job-provider";
 
 const dispose = registerExternalJobProvider({
   name: "surf-oracle",
@@ -335,7 +335,7 @@ import {
   openProjectPane,
   getProjectPaneStatus,
   closeProjectPane,
-} from "pi-subagents/project-panes";
+} from "pi-ensemble/project-panes";
 
 const opened = await openProjectPane({ cwd: "/path/to/repo", focus: false });
 const status = await getProjectPaneStatus({ cwd: "/path/to/repo" });

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+- Rebrand the maintained fork as `pi-ensemble` while retaining the stable `subagent` tool, `/subagents-*` commands, compatibility registry keys, and existing storage paths.
+- Move package ownership and documentation to `elBenz/pi-ensemble`; preserve upstream history and attribution.
+
 ### Added
 - Add bounded model-facing completion receipts backed by full output artifacts, while preserving full internal delegation results.
 - Add a compact registered tool schema with optional `payload` routing for rare controls, reducing standing provider context overhead.
