@@ -7,7 +7,7 @@ Safe multi-agent delegation and scripted orchestration for [Pi](https://github.c
 ## Install
 
 ```bash
-pi install npm:pi-ensemble
+pi install https://github.com/elBenz/pi-ensemble
 ```
 
 For local development:
