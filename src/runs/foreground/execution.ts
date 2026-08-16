@@ -53,6 +53,7 @@ import {
 	boundStreamedToolCalls,
 } from "../../shared/utils.ts";
 import { buildSkillInjection, resolveSkillsWithFallback } from "../../agents/skills.ts";
+import { unavailableSubagentOrchestrationSkillError } from "../../agents/orchestration-skill.ts";
 import { buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
 import { effectiveToolTimeoutMs, formatToolTimeoutMessage, resolveToolTimeoutMs, toolTimeoutCallKey, toolTimeoutFromEnv } from "../shared/tool-timeout.ts";
 import { evaluateCompletionMutationGuard } from "../shared/completion-guard.ts";
@@ -1657,7 +1658,8 @@ async function runSyncCompletionInner(
 		agent.skillPath,
 		agent.filePath ? path.dirname(agent.filePath) : skillCwd,
 	);
-	if (skillNames.some((skill) => skill.trim() === "pi-subagents") && missingSkills.includes("pi-subagents")) {
+	const unavailableOrchestrationSkill = unavailableSubagentOrchestrationSkillError(missingSkills);
+	if (unavailableOrchestrationSkill) {
 		return redactResultPrompt(withRunContext({
 			index: options.index ?? 0,
 			agent: agentName,
@@ -1665,7 +1667,7 @@ async function runSyncCompletionInner(
 			exitCode: 1,
 			messages: [],
 			usage: emptyUsage(),
-			error: "Skills not found: pi-subagents",
+			error: unavailableOrchestrationSkill,
 		}, options.context));
 	}
 	let systemPrompt = agent.systemPrompt?.trim() || "";

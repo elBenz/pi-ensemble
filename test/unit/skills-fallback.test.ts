@@ -249,23 +249,25 @@ describe("skills filesystem fallback", () => {
 		assert.match(injection, /amp&amp;skill[\\/]SKILL\.md/);
 	});
 
-	it("does not expose pi-subagents as a child-injectable skill", () => {
-		makeProjectSkill(tempDir, "pi-subagents", "Parent orchestration only.");
+	it("does not expose current or legacy orchestration skills to children", () => {
+		makeProjectSkill(tempDir, "pi-ensemble", "Parent orchestration only.");
+		makeProjectSkill(tempDir, "pi-subagents", "Legacy parent orchestration only.");
 		makeProjectSkill(tempDir, "safe-bash", "Use safe bash.");
 
 		const available = discoverAvailableSkills(tempDir).map((skill) => skill.name);
+		assert.equal(available.includes("pi-ensemble"), false);
 		assert.equal(available.includes("pi-subagents"), false);
 		assert.equal(available.includes("safe-bash"), true);
 
-		const { resolved, missing } = resolveSkills(["pi-subagents", "safe-bash"], tempDir);
-		assert.deepEqual(missing, ["pi-subagents"]);
+		const { resolved, missing } = resolveSkills(["pi-ensemble", "pi-subagents", "safe-bash"], tempDir);
+		assert.deepEqual(missing, ["pi-ensemble", "pi-subagents"]);
 		assert.deepEqual(resolved.map((skill) => skill.name), ["safe-bash"]);
 
 		const agentDir = path.join(tempDir, "agent");
-		writeSkillFile(path.join(agentDir, "skills", "pi-subagents"), "Still parent-only.");
-		const local = resolveSkills(["pi-subagents"], tempDir, ["./skills"], agentDir);
+		writeSkillFile(path.join(agentDir, "skills", "pi-ensemble"), "Still parent-only.");
+		const local = resolveSkills(["pi-ensemble"], tempDir, ["./skills"], agentDir);
 		assert.deepEqual(local.resolved, []);
-		assert.deepEqual(local.missing, ["pi-subagents"]);
+		assert.deepEqual(local.missing, ["pi-ensemble"]);
 	});
 
 	it("classifies package-provided skills as project-package", () => {

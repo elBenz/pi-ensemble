@@ -8,6 +8,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { parseFrontmatter } from "./frontmatter.ts";
 import { getAgentDir, getProjectConfigDir } from "../shared/utils.ts";
+import { isSubagentOrchestrationSkill } from "./orchestration-skill.ts";
 
 export type SkillSource =
 	| "project"
@@ -51,8 +52,6 @@ const MAX_CACHE_SIZE = 50;
 
 let loadSkillsCache: { cwd: string; agentDir: string; skills: CachedSkillEntry[]; timestamp: number } | null = null;
 const LOAD_SKILLS_CACHE_TTL_MS = 5000;
-
-const SUBAGENT_ORCHESTRATION_SKILL = "pi-subagents";
 
 const SOURCE_PRIORITY: Record<SkillSource, number> = {
 	project: 700,
@@ -642,7 +641,7 @@ export function resolveSkills(
 	for (const name of skillNames) {
 		const trimmed = name.trim();
 		if (!trimmed) continue;
-		if (trimmed === SUBAGENT_ORCHESTRATION_SKILL) {
+		if (isSubagentOrchestrationSkill(trimmed)) {
 			missing.push(trimmed);
 			continue;
 		}
@@ -739,7 +738,7 @@ export function discoverAvailableSkills(cwd: string): Array<{
 }> {
 	const skills = getCachedSkills(cwd);
 	return skills
-		.filter((s) => s.name !== SUBAGENT_ORCHESTRATION_SKILL)
+		.filter((s) => !isSubagentOrchestrationSkill(s.name))
 		.map((s) => ({
 			name: s.name,
 			source: s.source,

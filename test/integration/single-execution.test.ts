@@ -4470,17 +4470,17 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(result.skillsWarning, undefined);
 	});
 
-	it("fails foreground runs on explicit unavailable pi-subagents skill requests without spawning", async () => {
+	it("fails foreground runs on explicit unavailable pi-ensemble skill requests without spawning", async () => {
 		const agents = [makeAgent("worker")];
 
-		const result = await runSync(tempDir, agents, "worker", "Task", { skills: ["pi-subagents"] });
+		const result = await runSync(tempDir, agents, "worker", "Task", { skills: ["pi-ensemble"] });
 
 		assert.equal(result.exitCode, 1);
-		assert.equal(result.error, "Skills not found: pi-subagents");
+		assert.equal(result.error, "Skills not found: pi-ensemble");
 		assert.equal(mockPi.callCount(), 0);
 	});
 
-	it("fails foreground runs when an agent default requests pi-subagents skill", async () => {
+	it("keeps legacy pi-subagents skill requests parent-only", async () => {
 		const agents = [makeAgent("worker", { skills: ["pi-subagents"] })];
 
 		const result = await runSync(tempDir, agents, "worker", "Task", {});

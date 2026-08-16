@@ -4120,8 +4120,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(prompts.filter((prompt) => /two async local skill/.test(prompt) && !/one async local skill/.test(prompt)).length, 1);
 	});
 
-	it("background single runs report unavailable pi-subagents skill requests", () => {
-		const id = `async-pi-subagents-skill-${Date.now().toString(36)}`;
+	it("background single runs report unavailable pi-ensemble skill requests", () => {
+		const id = `async-pi-ensemble-skill-${Date.now().toString(36)}`;
 		const result = executeAsyncSingle(id, {
 			agent: "worker",
 			task: "Do work",
@@ -4138,15 +4138,15 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			},
 			shareEnabled: false,
 			sessionRoot: path.join(tempDir, "sessions"),
-			skills: ["pi-subagents"],
+			skills: ["pi-ensemble"],
 			maxSubagentDepth: 2,
 		});
 
 		assert.equal(result.isError, true);
-		assert.match(result.content[0]?.text ?? "", /Skills not found: pi-subagents/);
+		assert.match(result.content[0]?.text ?? "", /Skills not found: pi-ensemble/);
 	});
 
-	it("background chains report unavailable pi-subagents skill requests", () => {
+	it("background chains keep legacy pi-subagents skill requests parent-only", () => {
 		const id = `async-chain-pi-subagents-skill-${Date.now().toString(36)}`;
 		const result = executeAsyncChain(id, {
 			chain: [{ agent: "worker", task: "Do work", skill: ["pi-subagents"] }],

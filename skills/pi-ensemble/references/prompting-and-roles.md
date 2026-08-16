@@ -1,6 +1,6 @@
 # Pi Subagents: Prompting And Roles
 
-This file is a detailed reference loaded from `skills/pi-subagents/SKILL.md`.
+This file is a detailed reference loaded from `skills/pi-ensemble/SKILL.md`.
 
 ## Capability ceilings
 

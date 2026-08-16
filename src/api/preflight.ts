@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { discoverAgents, discoverAgentsAll, resolveAgentName, type AgentConfig, type AgentScope, type AgentSource } from "../agents/agents.ts";
 import { resolveExecutionAgentScope } from "../agents/agent-scope.ts";
 import { buildSkillInjection, normalizeSkillInput, resolveSkillsWithFallback } from "../agents/skills.ts";
+import { findSubagentOrchestrationSkill } from "../agents/orchestration-skill.ts";
 import { buildAgentMemoryInjection } from "../agents/agent-memory.ts";
 import { buildModelCandidates, resolveEffectiveSubagentModel, type AvailableModelInfo, type ParentModel } from "../runs/shared/model-fallback.ts";
 import { applyThinkingSuffix, resolvePiLaunchToolPlan, type PiLaunchToolPlan } from "../runs/shared/pi-args.ts";
@@ -272,8 +273,9 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 		agent.skillPath,
 		agent.filePath ? path.dirname(agent.filePath) : effectiveCwd,
 	);
-	if (resolvedSkills.missing.includes("pi-subagents")) {
-		return { ok: false, code: "missing_skill", message: "The pi-subagents orchestration skill is not child-injectable.", diagnostics };
+	const orchestrationSkill = findSubagentOrchestrationSkill(resolvedSkills.missing);
+	if (orchestrationSkill) {
+		return { ok: false, code: "missing_skill", message: `The ${orchestrationSkill} orchestration skill is not child-injectable.`, diagnostics };
 	}
 	if (resolvedSkills.missing.length > 0) diagnostics.push({ code: "missing_skill", severity: "error", message: `Missing skills: ${resolvedSkills.missing.join(", ")}` });
 
