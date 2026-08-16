@@ -412,6 +412,31 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(result.details.mode, "workflow");
 		assert.equal(mockPi.callCount(), 1);
 		assert.match(JSON.stringify(result.details), /Converted structured single-child request/);
+		assert.match(result.content[0]?.text ?? "", /Completed: workflow/);
+		assert.doesNotMatch(result.content[0]?.text ?? "", /Structured child completed/);
+		const artifactPath = (result.content[0]?.text ?? "").match(/Output artifact: (.+)/)?.[1];
+		assert.ok(artifactPath);
+		assert.match(fs.readFileSync(artifactPath, "utf-8"), /Structured child completed/);
+	});
+
+	it("keeps public foreground failures bounded with a full artifact", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const privateOutput = "private failure output ".repeat(10_000);
+		mockPi.onCall({ output: privateOutput, stderr: "provider failed", exitCode: 1 });
+		const result = await makeExecutor([makeAgent("echo")]).executePublic(
+			"structured-single-failure",
+			{ agent: "echo", task: "Run through workflow", async: false, context: "fresh" },
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+
+		assert.equal(result.isError, true);
+		assert.match(result.content[0]?.text ?? "", /Failed: workflow/);
+		assert.doesNotMatch(result.content[0]?.text ?? "", /private failure output/);
+		const artifactPath = (result.content[0]?.text ?? "").match(/Output artifact: (.+)/)?.[1];
+		assert.ok(artifactPath);
+		assert.match(fs.readFileSync(artifactPath, "utf-8"), /private failure output/);
+		assert.ok(Buffer.byteLength(result.content[0]?.text ?? "") < 1_000);
 	});
 
 	it("does not override structured single output unless configured by the agent", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
@@ -636,7 +661,11 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.match(steeringEnv[SUBAGENT_STEER_CAPABILITY_ENV] ?? "", /control[/\\]workflow-foreground[/\\].+[/\\]control[/\\]steer-capabilities[/\\]0\.json$/);
 		assert.match(steeringEnv[SUBAGENT_STEER_ACK_DIR_ENV] ?? "", /control[/\\]workflow-foreground[/\\].+[/\\]control[/\\]steer-acks[/\\]0$/);
 		assert.equal(fs.existsSync(path.join(result.details.asyncDir!, "control", "workflow-foreground", persistedResult.results?.[0]?.runId ?? "missing")), false);
-		assert.match(persistedResult.summary ?? "", /Return: \{\n  "answer": 42\n\}/);
+		assert.match(persistedResult.summary ?? "", /Completed: workflow/);
+		assert.doesNotMatch(persistedResult.summary ?? "", /Return:/);
+		const aggregatePath = (persistedResult.summary ?? "").match(/Output artifact: (.+)/)?.[1];
+		assert.ok(aggregatePath);
+		assert.match(fs.readFileSync(aggregatePath, "utf-8"), /Return:\n\{\n  "answer": 42\n\}/);
 		assert.deepEqual(persistedResult.workflow?.value, { answer: 42 });
 		assert.equal(fs.existsSync(path.join(DIRS.results, `${toolCallId}.json`)), false);
 		fs.rmSync(result.details.asyncDir!, { recursive: true, force: true });
@@ -1531,6 +1560,28 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.match(result.content[0]?.text ?? "", /Workflow completed\./);
 		assert.match(result.content[0]?.text ?? "", /Output file error:/);
 		assert.match(result.content[0]?.text ?? "", new RegExp(escapeRegExp(outputDir)));
+	});
+
+	it("does not advertise a failed workflow aggregate path in compact public receipts", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const outputDir = path.join(tempDir, "compact-aggregate-dir");
+		fs.mkdirSync(outputDir);
+		const result = await makeExecutor([makeAgent("echo")]).executePublic(
+			"scripted-workflow-compact-aggregate-output-write-error",
+			{
+				async: false,
+				output: outputDir,
+				workflowScript: `return "ok";`,
+			},
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+
+		assert.equal(result.isError, undefined, result.content[0]?.text ?? "workflow failed");
+		assert.match(result.content[0]?.text ?? "", /Completed with warnings: workflow/);
+		assert.match(result.content[0]?.text ?? "", /Output artifact: unavailable/);
+		assert.match(result.content[0]?.text ?? "", /Warning: Output file error:/);
+		assert.doesNotMatch(result.content[0]?.text ?? "", new RegExp(`Output artifact: ${escapeRegExp(outputDir)}`));
 	});
 
 	it("rejects workflow child output collisions before launch", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
@@ -3774,6 +3825,42 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.ok(Date.now() - startedAt < 4000, "agent_settled should trigger bounded child cleanup");
 	});
 
+	it("preserves committed output when a late extension crashes after agent settlement", async () => {
+		mockPi.onCall({
+			jsonl: [mockAssistantMessage("audit artifact complete", "tool_use"), { type: "agent_settled" }],
+			stderr: "Error: This extension ctx is stale after session replacement or reload",
+			exitCode: 1,
+		});
+
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Audit", {
+			runId: "late-extension-crash",
+			acceptance: false,
+		});
+
+		assert.equal(result.exitCode, 0);
+		assert.equal(result.error, undefined);
+		assert.equal(result.finalOutput, "audit artifact complete");
+		assert.match(result.warnings?.[0] ?? "", /late child-process failure/i);
+		assert.match(result.warnings?.[0] ?? "", /stale after session replacement/i);
+	});
+
+	it("does not warn on a successful settled exit with benign stderr", async () => {
+		mockPi.onCall({
+			jsonl: [mockAssistantMessage("audit artifact complete", "tool_use"), { type: "agent_settled" }],
+			stderr: "benign extension diagnostic",
+			exitCode: 0,
+		});
+
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Audit", {
+			runId: "settled-benign-stderr",
+			acceptance: false,
+		});
+
+		assert.equal(result.exitCode, 0);
+		assert.equal(result.error, undefined);
+		assert.equal(result.warnings, undefined);
+	});
+
 	it("tracks usage from message events", async () => {
 		mockPi.onCall({ output: "Done" });
 		const agents = makeAgentConfigs(["echo"]);
@@ -3819,6 +3906,77 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		]);
 		assert.deepEqual(result.modelAttempts?.map((attempt) => attempt.success), [false, false, true]);
 		assert.equal(mockPi.callCount(), 3);
+	});
+
+	it("blocks model fallback after a mutation attempt", async () => {
+		mockPi.onCall({
+			jsonl: [
+				events.toolStart("edit", { path: "src/app.ts", edits: [{ oldText: "a", newText: "b" }] }),
+				{
+					type: "message_end",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "provider failed after edit" }],
+						model: "openai/gpt-5-mini",
+						errorMessage: "rate limit exceeded",
+						usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: { total: 0.01 } },
+					},
+				},
+			],
+			exitCode: 1,
+		});
+		mockPi.onCall({ output: "fallback must not run" });
+		const agents = [makeAgent("worker", {
+			model: "openai/gpt-5-mini",
+			fallbackModels: ["anthropic/claude-sonnet-4"],
+			completionGuard: false,
+		})];
+
+		const result = await runSync(tempDir, agents, "worker", "Implement the change", {
+			runId: "mutation-fallback-barrier",
+			acceptance: false,
+		});
+
+		assert.equal(result.exitCode, 1);
+		assert.match(result.error ?? "", /Automatic retry\/fallback blocked because this attempt may have changed/);
+		assert.equal(result.observedMutationAttempt, true);
+		assert.equal(result.modelAttempts?.length, 1);
+		assert.equal(mockPi.callCount(), 1);
+	});
+
+	it("blocks model fallback after a structured output side effect", async () => {
+		mockPi.onCall({
+			jsonl: [
+				events.toolStart("structured_output", { answer: 42 }),
+				{
+					type: "message_end",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "provider failed after capture" }],
+						model: "openai/gpt-5-mini",
+						errorMessage: "rate limit exceeded",
+						usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: { total: 0.01 } },
+					},
+				},
+			],
+			exitCode: 1,
+		});
+		mockPi.onCall({ output: "fallback must not run" });
+		const agents = [makeAgent("worker", {
+			model: "openai/gpt-5-mini",
+			fallbackModels: ["anthropic/claude-sonnet-4"],
+			completionGuard: false,
+		})];
+
+		const result = await runSync(tempDir, agents, "worker", "Capture the result", {
+			runId: "structured-output-fallback-barrier",
+			acceptance: false,
+		});
+
+		assert.equal(result.exitCode, 1);
+		assert.match(result.error ?? "", /Automatic retry\/fallback blocked/);
+		assert.equal(result.modelAttempts?.length, 1);
+		assert.equal(mockPi.callCount(), 1);
 	});
 
 	it("retries with fallback models on retryable provider failures", async () => {
@@ -6369,7 +6527,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(firstDetachResponse, true);
 	});
 
-	it("returns actionable guidance for ambient extension registration conflicts", async () => {
+	it("does not misclassify extension conflicts as ambient when child isolation is active", async () => {
 		mockPi.onCall({
 			exitCode: 1,
 			stderr: 'Error: Failed to load extension "/tmp/pi-mcp-adapter-clone/index.ts": Tool "mcpScript" conflicts with /tmp/pi-mcp-adapter/index.ts',
@@ -6379,8 +6537,9 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const result = await runSync(tempDir, agents, "echo", "Task", {});
 
 		assert.equal(result.exitCode, 1);
-		assert.match(result.error ?? "", /loaded conflicting ambient Pi extensions/);
-		assert.match(result.error ?? "", /"echo":\{"extensions":\[\]\}/);
+		assert.match(result.error ?? "", /Tool "mcpScript" conflicts/);
+		assert.doesNotMatch(result.error ?? "", /ambient Pi extensions/);
+		assert.equal(result.launchResolvedExtensions?.disableAmbientExtensions, true);
 	});
 
 	it("handles stderr without exit code as info (not error)", async () => {

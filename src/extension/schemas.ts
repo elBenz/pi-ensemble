@@ -2,7 +2,7 @@
  * TypeBox schemas for subagent tool parameters
  */
 
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 
 function keepTopLevelParameterDescriptions<T>(schema: T): T {
 	return pruneNestedDescriptions(schema, []) as T;
@@ -353,6 +353,32 @@ export const SubagentParams = keepTopLevelParameterDescriptions(SubagentParamsSc
 
 export function createSubagentParamsSchema(): typeof SubagentParams {
 	return SubagentParams;
+}
+
+const CompactSubagentParams = Type.Object({
+	agent: Type.Optional(Type.String({ description: "Agent for one-child execution." })),
+	task: Type.Optional(Type.String({ description: "Task for the selected child." })),
+	action: Type.Optional(Type.String({ minLength: 1, description: "Management/control action; omit for execution." })),
+	workflowScript: Type.Optional(Type.String({ minLength: 1, description: "Workflow JavaScript using runs.run/runs.all; return the result." })),
+	async: Type.Optional(Type.Boolean({ description: "Run in background; defaults on." })),
+	context: Type.Optional(Type.String({ enum: ["fresh", "fork"], description: "Fresh by default; fork only when explicitly needed." })),
+	cwd: Type.Optional(Type.String({ description: "Execution working directory." })),
+	worktree: Type.Optional(Type.Boolean({ description: "Use managed Git worktree isolation." })),
+	output: Type.Optional(OutputOverride),
+	outputMode: Type.Optional(OutputModeOverride),
+	payload: Type.Optional(Type.Unsafe({ type: "object", additionalProperties: true, description: "Rare action or execution options. Fields are validated by the selected runtime action." })),
+}, { additionalProperties: true });
+
+export function createCompactSubagentParamsSchema(): typeof CompactSubagentParams {
+	return CompactSubagentParams;
+}
+
+export function prepareCompactSubagentArguments(value: unknown): Static<typeof CompactSubagentParams> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return value as Static<typeof CompactSubagentParams>;
+	const { payload, ...topLevel } = value as Record<string, unknown>;
+	if (payload === undefined) return topLevel as Static<typeof CompactSubagentParams>;
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return value as Static<typeof CompactSubagentParams>;
+	return { ...(payload as Record<string, unknown>), ...topLevel } as Static<typeof CompactSubagentParams>;
 }
 
 const SubagentWaitParamsSchema = Type.Object({

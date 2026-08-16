@@ -4,11 +4,11 @@ Where running subagents show up, how to inspect them, and the files and events t
 
 ## Foreground runs
 
-Foreground runs stream progress in the conversation while they run. They default to a generous 30-minute wall-clock timeout when neither the call nor the selected agent provides a timeout; a global [`timeoutMs`](configuration.md#timeoutms) config replaces that default, and explicit `timeoutMs`/`maxRuntimeMs` and agent defaults win.
+Foreground runs stream progress through the live tool card while they run; routine progress is UI-only and does not create parent model messages. They default to a generous 30-minute wall-clock timeout when neither the call nor the selected agent provides a timeout; a global [`timeoutMs`](configuration.md#timeoutms) config replaces that default, and explicit `timeoutMs`/`maxRuntimeMs` and agent defaults win.
 
 Live progress shows compact detail for single, chain, and parallel modes: current tool, recent output, token counts, aggregate cost, duration, activity freshness, current-tool duration, and chain graph metadata when available.
 
-Press Pi's configured expand key (`Ctrl+O` by default) to expand the full streaming view with complete output per step.
+Press Pi's configured expand key (`Ctrl+O` by default) to expand live details. On completion, model-facing calls receive a small status/artifact receipt; complete output remains in the referenced artifact.
 
 Sequential chains show a flow line like `done scout → running worker`. Chains with parallel steps show per-step cards instead. Chain status uses `label` and `phase` metadata when present, while falling back to agent names for older chains.
 
@@ -163,6 +163,7 @@ Foreground and async runners share bounded child-protocol handling:
 - Split UTF-8 and final unterminated JSON events remain valid.
 - `agent_end.willRetry` defers completion until the child settles.
 - Current Pi builds use `agent_settled` as the terminal watermark; older builds retain the bounded terminal-message fallback.
+- A non-zero child-process exit after a clean terminal response plus `agent_settled` cannot retroactively fail committed work. The run completes with a bounded warning and preserved artifact; pre-settlement failures remain failures.
 
 ## Workflow and debug artifacts
 

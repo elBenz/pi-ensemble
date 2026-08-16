@@ -141,6 +141,17 @@ export function isMutatingBashCommand(command: string): boolean {
 		|| MUTATING_BASH_PATTERNS.some((pattern) => pattern.test(command));
 }
 
+const KNOWN_READ_ONLY_TOOLS = new Set([
+	"read", "grep", "find", "ls",
+	"structured_output", "contact_supervisor", "intercom", "subagent_wait", "ask_question",
+	"web_search", "source_check", "fetch_content", "get_search_content",
+]);
+
+const KNOWN_REPLAY_SAFE_TOOLS = new Set([
+	"read", "grep", "find", "ls", "subagent_wait",
+	"web_search", "source_check", "fetch_content", "get_search_content",
+]);
+
 export function isMutatingTool(toolName: string | undefined, args: Record<string, unknown> | undefined): boolean {
 	if (!toolName) return false;
 	if (toolName === "edit" || toolName === "write") return true;
@@ -148,10 +159,21 @@ export function isMutatingTool(toolName: string | undefined, args: Record<string
 		const activityTitle = typeof args?.activityTitle === "string" ? args.activityTitle : "";
 		return /^Cursor (?:edit|write)\b/i.test(activityTitle);
 	}
-	if (toolName !== "bash") return false;
-	const command = typeof args?.command === "string" ? args.command : "";
-	if (!command.trim()) return false;
-	return isMutatingBashCommand(command);
+	if (toolName === "bash") {
+		const command = typeof args?.command === "string" ? args.command : "";
+		if (!command.trim()) return false;
+		return isMutatingBashCommand(command);
+	}
+	if (KNOWN_READ_ONLY_TOOLS.has(toolName)) return false;
+	// Unknown extension/MCP tools may have external side effects. Retry safety is
+	// conservative: starting one creates a replay barrier unless explicitly known read-only.
+	return true;
+}
+
+export function isReplayUnsafeTool(toolName: string | undefined, args: Record<string, unknown> | undefined): boolean {
+	if (!toolName) return false;
+	if (KNOWN_REPLAY_SAFE_TOOLS.has(toolName)) return false;
+	return isMutatingTool(toolName, args) || toolName === "structured_output" || toolName === "contact_supervisor" || toolName === "intercom" || toolName === "ask_question";
 }
 
 export function didMutatingToolFail(text: string): boolean {

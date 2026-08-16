@@ -924,6 +924,8 @@ export interface SingleResult {
 	modelAttempts?: ModelAttempt[];
 	controlEvents?: ControlEvent[];
 	error?: string;
+	/** Non-fatal diagnostics recorded after authoritative completion committed. */
+	warnings?: string[];
 	protocolError?: ProtocolOutputLimit;
 	sessionFile?: string;
 	skills?: string[];
@@ -954,6 +956,8 @@ export interface SingleResult {
 	execution?: ExecutionProjection;
 	review?: ReviewProjection;
 	effects?: EffectsProjection;
+	/** Internal retry-safety signal: at least one potentially mutating tool started. */
+	observedMutationAttempt?: boolean;
 	transcriptPath?: string;
 	transcriptError?: string;
 	children?: NestedRunSummary[];

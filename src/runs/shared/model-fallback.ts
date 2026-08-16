@@ -362,6 +362,11 @@ export function isRetryableModelFailure(error: string | undefined): boolean {
 	return RETRYABLE_MODEL_FAILURE_PATTERNS.some((pattern) => pattern.test(error));
 }
 
+export function mutationRetryBarrierMessage(error: string | undefined): string {
+	const failure = error?.trim() || "Child execution failed after a mutation attempt.";
+	return `${failure}\n\nAutomatic retry/fallback blocked because this attempt may have changed files or external state. Inspect artifacts and resume explicitly; do not replay the whole task.`;
+}
+
 export function formatModelAttemptNote(attempt: ModelAttemptSummary, nextModel?: string): string {
 	const failure = attempt.error?.trim() || `exit ${attempt.exitCode ?? 1}`;
 	return nextModel

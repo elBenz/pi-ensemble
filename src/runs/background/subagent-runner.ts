@@ -12,7 +12,7 @@ import { createChildTranscriptWriter, type ChildTranscriptWriter } from "../../s
 import { closeSteerInbox, consumeInterruptRequest, consumeSteerRequests, deliverInterruptRequest, deliverStopRequest, deliverTimeoutRequest, enqueueStepSteer, steerAcksDir, steerCapabilityPath, stepSteerInboxDir, watchAsyncControlInbox, type SteerAck, type SteerCapability, type SteerRequest } from "./control-channel.ts";
 import { appendJsonl as appendRawJsonl, formatOutputArtifactContent, getArtifactPaths, writeArtifact, writeMetadata } from "../../shared/artifacts.ts";
 import { PI_CODING_AGENT_PACKAGE, getPiSpawnCommand, resolveInstalledPiPackageRoot } from "../shared/pi-spawn.ts";
-import { captureSingleOutputSnapshot, extractChildWrittenOutput, finalizeSingleOutput, formatSavedOutputReference, injectOutputPathSystemPrompt, injectSingleOutputInstruction, resolveSingleOutput, type SingleOutputSnapshot } from "../shared/single-output.ts";
+import { captureSingleOutputSnapshot, extractChildWrittenOutput, finalizeSingleOutput, formatSavedOutputReference, formatSingleCompletionReceipt, injectOutputPathSystemPrompt, injectSingleOutputInstruction, resolveSingleOutput, type SingleOutputSnapshot } from "../shared/single-output.ts";
 import {
 	type ActivityState,
 	type ArtifactConfig,
@@ -83,7 +83,7 @@ import { readChildToolDiagnosticError } from "../shared/tool-availability.ts";
 import { collectDynamicResults, DynamicFanoutError, materializeDynamicParallelStep, validateDynamicCollection } from "../shared/dynamic-fanout.ts";
 import { claimRunFanoutBatch, getRunFanoutBudgetSnapshot } from "../shared/run-fanout-budget.ts";
 import { nestedSummaryFromAsyncStatus, projectNestedEvents, resolveNestedAsyncDir, writeNestedEvent } from "../shared/nested-events.ts";
-import { formatModelAttemptNote, isRetryableModelFailure } from "../shared/model-fallback.ts";
+import { formatModelAttemptNote, isRetryableModelFailure, mutationRetryBarrierMessage } from "../shared/model-fallback.ts";
 import {
 	SUBAGENT_STARTUP_RETRY_DELAYS_MS,
 	formatSubagentExtensionConflictError,
@@ -102,6 +102,7 @@ import {
 	createMutatingFailureState,
 	didMutatingToolFail,
 	isMutatingTool,
+	isReplayUnsafeTool,
 	nextLongRunningTrigger,
 	recordMutatingFailure,
 	resetMutatingFailureState,
@@ -202,6 +203,17 @@ interface SubagentRunConfig {
 	workflowKey?: string;
 }
 
+function existingRegularFile(...candidates: Array<string | undefined>): string | undefined {
+	for (const candidate of candidates) {
+		if (!candidate) continue;
+		try {
+			const stat = fs.lstatSync(candidate);
+			if (stat.isFile() && !stat.isSymbolicLink()) return candidate;
+		} catch { /* Try next durable output candidate. */ }
+	}
+	return undefined;
+}
+
 interface StepResult {
 	agent: string;
 	context?: "fresh" | "fork";
@@ -212,6 +224,7 @@ interface StepResult {
 	output: string;
 	outputState?: SubagentOutputState;
 	error?: string;
+	warnings?: string[];
 	protocolError?: ProtocolOutputLimit;
 	success?: boolean;
 	exitCode: number | null;
@@ -512,6 +525,7 @@ interface RunPiStreamingResult {
 	durationMs: number;
 	model?: string;
 	error?: string;
+	warnings?: string[];
 	protocolError?: ProtocolOutputLimit;
 	finalOutput: string;
 	outputState: SubagentOutputState;
@@ -701,7 +715,7 @@ function runPiStreaming(
 					structuredOutputToolInvoked = true;
 					structuredOutputMessageStartIndex = messages.length;
 				}
-				observedMutationAttempt = observedMutationAttempt || isMutatingTool(event.toolName, event.args);
+				observedMutationAttempt = observedMutationAttempt || isReplayUnsafeTool(event.toolName, event.args);
 				const toolArgs = extractToolArgsPreview(event.args ?? {});
 				writeOutputLine(toolArgs ? `${event.toolName}: ${toolArgs}` : event.toolName);
 				return;
@@ -977,7 +991,15 @@ function runPiStreaming(
 			const stderr = stderrTail.text();
 			const finalOutput = getFinalOutput(messages) || rawStdoutTail.text().trim();
 			const finalError = error ?? assistantError;
+			const committedCompletion = agentSettledReceived
+				&& (exitCode !== 0 || Boolean(signal) || forcedTerminationSignal)
+				&& Boolean(finalOutput.trim())
+				&& !finalError;
 			const forcedDrainAfterFinalSuccess = Boolean(forcedTerminationSignal || signal) && (cleanTerminalAssistantStopReceived || agentSettledReceived) && !finalError;
+			const preservedLateFailure = committedCompletion;
+			const committedWarnings = preservedLateFailure
+				? [`Result preserved after a late child-process failure following agent settlement.${stderr.trim() ? ` Diagnostics: ${stderr.trim().slice(-500)}` : ""}`]
+				: undefined;
 			const signalError = isUnexplainedProcessSignal({
 				processSignal: signal,
 				interrupted,
@@ -988,13 +1010,14 @@ function runPiStreaming(
 			}) ? formatProcessSignalError(signal!) : undefined;
 			resolve(omitUndefinedProperties({
 				stderr,
-				exitCode: timedOut || stopped ? 1 : turnBudgetExceeded ? 1 : interrupted || forcedDrainAfterFinalSuccess ? 0 : forcedTerminationSignal || signal ? (exitCode ?? 1) : exitCode,
+				exitCode: timedOut || stopped ? 1 : turnBudgetExceeded ? 1 : interrupted || forcedDrainAfterFinalSuccess || committedCompletion ? 0 : forcedTerminationSignal || signal ? (exitCode ?? 1) : exitCode,
 				messages,
 				usage,
 				toolCount,
 				durationMs: Date.now() - startedAt,
 				model,
-				error: stopped ? (stopMessage ?? "Subagent stopped by user.") : timedOut ? (timeoutMessage ?? "Subagent timed out.") : turnBudgetExceeded ? turnBudgetMessage : interrupted || forcedDrainAfterFinalSuccess ? undefined : finalError ?? signalError,
+				error: stopped ? (stopMessage ?? "Subagent stopped by user.") : timedOut ? (timeoutMessage ?? "Subagent timed out.") : turnBudgetExceeded ? turnBudgetMessage : interrupted || forcedDrainAfterFinalSuccess || committedCompletion ? undefined : finalError ?? signalError,
+				warnings: committedWarnings,
 				protocolError,
 				finalOutput: (timedOut || stopped) && !finalOutput.trim() ? (stopped ? stopMessage ?? "Subagent stopped by user." : timeoutMessage ?? "Subagent timed out.") : finalOutput,
 				outputState: finalOutput.trim() ? "present" : "absent",
@@ -1719,6 +1742,13 @@ async function runSingleStepInner(
 		if (run.turnBudgetExceeded) break modelAttemptsLoop;
 		if (run.stopped || run.timedOut || ctx.timeoutSignal?.aborted || ctx.stopSignal?.aborted || ctx.skipAcceptance?.()) break modelAttemptsLoop;
 		if (attempt.success || completionGuardTriggered) break modelAttemptsLoop;
+		if (run.observedMutationAttempt) {
+			const barrierError = mutationRetryBarrierMessage(error);
+			attempt.error = barrierError;
+			finalResult.error = barrierError;
+			finalResult.finalOutput = barrierError;
+			break modelAttemptsLoop;
+		}
 
 		const startupFailure = isRetryableSubagentStartupFailure(omitUndefinedProperties({
 			exitCode: effectiveExitCode,
@@ -1896,6 +1926,7 @@ async function runSingleStepInner(
 		outputState,
 		exitCode: effectiveFinalExitCode,
 		error: effectiveFinalError,
+		warnings: finalResult?.warnings,
 		protocolError: finalResult?.protocolError,
 		sessionFile: step.sessionFile,
 		intercomTarget: ctx.childIntercomTarget,
@@ -3888,6 +3919,7 @@ async function runSubagent(
 					output: pr.output,
 					outputState: pr.outputState,
 					error: pr.error,
+					warnings: pr.warnings,
 					protocolError: pr.protocolError,
 					success: pr.stopped !== true && pr.interrupted !== true && pr.exitCode === 0,
 					exitCode: pr.interrupted === true ? 0 : pr.exitCode,
@@ -4313,6 +4345,7 @@ async function runSubagent(
 						output: pr.output,
 						outputState: pr.outputState,
 						error: pr.error,
+						warnings: pr.warnings,
 						protocolError: pr.protocolError,
 						success: pr.stopped !== true && pr.interrupted !== true && pr.exitCode === 0,
 						exitCode: pr.interrupted === true ? 0 : pr.exitCode,
@@ -4539,6 +4572,7 @@ async function runSubagent(
 				output: stopped || childStopped ? stopMessage : timedOut ? (timeoutMessage ?? "Subagent timed out.") : singleResult.output,
 				outputState: singleResult.outputState,
 				error: stopped || childStopped ? stopMessage : timedOut ? (timeoutMessage ?? "Subagent timed out.") : singleResult.error,
+				warnings: singleResult.warnings,
 				protocolError: singleResult.protocolError,
 				success: !stopped && !childStopped && !timedOut && singleResult.interrupted !== true && singleResult.exitCode === 0,
 				exitCode: stopped || childStopped ? 1 : timedOut ? 1 : singleResult.interrupted === true ? 0 : singleResult.exitCode,
@@ -4730,7 +4764,13 @@ async function runSubagent(
 		}
 	}
 
-	let summary = results.map((r) => `${r.agent}:\n${r.output}`).join("\n\n");
+	let summary = results.map((result, index) => formatSingleCompletionReceipt({
+		agent: result.agent,
+		runId: `${id}:${index}`,
+		success: result.success === true,
+		artifactPath: existingRegularFile(result.savedOutputPath, result.artifactPaths?.outputPath, path.join(asyncDir, `output-${index}.log`)),
+		warnings: [...(result.warnings ?? []), ...(result.success !== true && result.error ? [result.error] : [])],
+	})).join("\n\n");
 	let truncated = false;
 
 	if (maxOutput) {
@@ -4881,6 +4921,7 @@ async function runSubagent(
 				output: r.output,
 				outputState: r.outputState,
 				error: r.error,
+				warnings: r.warnings,
 				protocolError: r.protocolError,
 				success: r.success,
 				skipped: r.skipped || undefined,

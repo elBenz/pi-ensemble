@@ -3,12 +3,14 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, it } from "node:test";
 import { handleMissionAction } from "../../src/missions/actions.ts";
 import {
 	createMission,
 	listGlobalMissions,
 	listMissions,
+	missionRecordPath,
 	readMission,
 	resolveMissionStoreLocation,
 	updateMission,
@@ -82,6 +84,75 @@ describe("mission store", () => {
 			const global = listGlobalMissions(test.location.globalIndexDir);
 			assert.equal(global.entries[0]?.missionId, created.id);
 			assert.equal(global.entries[0]?.stale, false);
+		} finally {
+			fs.rmSync(test.root, { recursive: true, force: true });
+		}
+	});
+
+	it("preserves sibling updates under cross-process contention", async () => {
+		const test = fixture();
+		try {
+			const mission = createMission(test.location, { title: "Concurrent updates", objective: "Keep every artifact", status: "active" });
+			const storeUrl = pathToFileURL(path.resolve("src/missions/store.ts")).href;
+			const loader = path.resolve("test/support/register-loader.mjs");
+			const workers = Array.from({ length: 8 }, (_, index) => new Promise<void>((resolve, reject) => {
+				const script = [
+					`import { updateMission } from ${JSON.stringify(storeUrl)};`,
+					`const location = ${JSON.stringify(test.location)};`,
+					`updateMission(location, ${JSON.stringify(mission.id)}, { addArtifacts: [{ kind: "note", path: ${JSON.stringify(path.join(test.root, "artifact-"))} + ${JSON.stringify(String(index))} }] });`,
+				].join("\n");
+				const child = spawn(process.execPath, ["--experimental-strip-types", "--import", loader, "--input-type=module", "--eval", script], {
+					cwd: path.resolve("."),
+					stdio: ["ignore", "pipe", "pipe"],
+				});
+				let stderr = "";
+				child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+				child.on("error", reject);
+				child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`mission update child exited ${code}: ${stderr}`)));
+			}));
+
+			await Promise.all(workers);
+			const updated = readMission(test.location, mission.id);
+			assert.equal(updated.artifacts.length, 8);
+			assert.deepEqual(updated.artifacts.map((artifact) => path.basename(artifact.path)).sort(), Array.from({ length: 8 }, (_, index) => `artifact-${index}`));
+		} finally {
+			fs.rmSync(test.root, { recursive: true, force: true });
+		}
+	});
+
+	it("reclaims a mission lock whose PID identity was reused", () => {
+		const test = fixture();
+		try {
+			const mission = createMission(test.location, { title: "Recover stale lock", objective: "Preserve mission updates", status: "active" });
+			const lockPath = `${missionRecordPath(test.location, mission.id)}.lock`;
+			fs.mkdirSync(lockPath, { mode: 0o700 });
+			fs.writeFileSync(path.join(lockPath, "owner.json"), JSON.stringify({
+				pid: process.pid,
+				token: "stale-owner",
+				createdAt: Date.now(),
+				processKey: "reused:old-process",
+			}), { mode: 0o600 });
+
+			const updated = updateMission(test.location, mission.id, { summary: "Recovered safely" });
+			assert.equal(updated.summary, "Recovered safely");
+			assert.equal(fs.existsSync(lockPath), false);
+		} finally {
+			fs.rmSync(test.root, { recursive: true, force: true });
+		}
+	});
+
+	it("does not steal an old lock from a live owner", () => {
+		const test = fixture();
+		try {
+			const mission = createMission(test.location, { title: "Keep live lock", objective: "Do not overlap updates", status: "active" });
+			const lockPath = `${missionRecordPath(test.location, mission.id)}.lock`;
+			fs.mkdirSync(lockPath, { mode: 0o700 });
+			fs.writeFileSync(path.join(lockPath, "owner.json"), JSON.stringify({ pid: process.pid, token: "live-owner", createdAt: 1 }), { mode: 0o600 });
+			const old = new Date(Date.now() - 120_000);
+			fs.utimesSync(lockPath, old, old);
+
+			assert.throws(() => updateMission(test.location, mission.id, { summary: "must not overlap" }), /Timed out acquiring mission lock/);
+			assert.equal(JSON.parse(fs.readFileSync(path.join(lockPath, "owner.json"), "utf-8")).token, "live-owner");
 		} finally {
 			fs.rmSync(test.root, { recursive: true, force: true });
 		}

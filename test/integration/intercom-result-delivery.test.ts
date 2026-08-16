@@ -256,7 +256,7 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 
 		const intercomEvents = events.emitted.filter((entry) => entry.channel === "subagent:result-intercom");
 		assert.equal(intercomEvents.length, 1);
-		const payload = intercomEvents[0]!.payload as { children?: Array<{ agent?: string; intercomTarget?: string }>; message?: string; mode?: string };
+		const payload = intercomEvents[0]!.payload as { children?: Array<{ agent?: string; intercomTarget?: string; artifactPath?: string }>; message?: string; mode?: string };
 		assert.equal(payload.mode, "single");
 		assert.equal(payload.children?.length, 1);
 		assert.equal(payload.children?.[0]?.agent, "worker");
@@ -266,7 +266,9 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 		assert.match(result.content[0]?.text ?? "", /Delivered single subagent result via intercom\./);
 		assert.doesNotMatch(result.content[0]?.text ?? "", /Full child output from worker/);
 		assert.equal(result.details?.results?.[0]?.finalOutput, undefined);
-		assert.match(String(payload.message ?? ""), /Full child output from worker/);
+		assert.doesNotMatch(String(payload.message ?? ""), /Full child output from worker/);
+		assert.ok(payload.children?.[0]?.artifactPath);
+		assert.match(fs.readFileSync(payload.children[0].artifactPath, "utf-8"), /Full child output from worker/);
 	});
 
 	it("keeps child output available to workflow runs after grouped delivery", async () => {

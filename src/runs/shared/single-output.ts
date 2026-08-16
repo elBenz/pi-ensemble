@@ -137,6 +137,27 @@ export function formatSavedOutputReference(savedPath: string, fullOutput: string
 	};
 }
 
+export function formatSingleCompletionReceipt(params: {
+	agent: string;
+	runId: string;
+	success: boolean;
+	artifactPath?: string;
+	warnings?: string[];
+}): string {
+	const status = params.success
+		? params.warnings?.length ? "Completed with warnings" : "Completed"
+		: "Failed";
+	const lines = [
+		`${status}: ${params.agent} [${params.runId}]`,
+		params.artifactPath
+			? `Output artifact: ${path.resolve(params.artifactPath)}`
+			: "Output artifact: unavailable; use run status for diagnostics.",
+	];
+	if (params.artifactPath) lines.push("Use bounded file reads only when details are needed.");
+	for (const warning of params.warnings?.slice(0, 3) ?? []) lines.push(`Warning: ${warning.trim().slice(0, 500)}`);
+	return lines.join("\n");
+}
+
 export function validateFileOnlyOutputMode(outputMode: OutputMode | undefined, outputPath: string | undefined, context: string): string | undefined {
 	if (outputMode === "file-only" && !outputPath) {
 		return `${context} sets outputMode: "file-only" but does not configure an output file. Set output to a path or use outputMode: "inline".`;

@@ -391,6 +391,10 @@ async function main() {
 		process.stderr.write(response.stderr);
 	}
 
+	if (typeof response.hardExitCode === "number") {
+		process.exit(response.hardExitCode);
+	}
+
 	if (typeof response.keepAliveAfterFinalMessageMs === "number" && response.keepAliveAfterFinalMessageMs > 0) {
 		await new Promise((resolve) => setTimeout(resolve, response.keepAliveAfterFinalMessageMs));
 	}

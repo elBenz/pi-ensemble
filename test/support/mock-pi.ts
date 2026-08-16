@@ -7,6 +7,8 @@ interface MockPiResponse {
 	output?: string;
 	stderr?: string;
 	exitCode?: number;
+	/** Exit immediately after response writes, bypassing graceful stream shutdown. */
+	hardExitCode?: number;
 	signal?: NodeJS.Signals;
 	delay?: number;
 	waitForPath?: string;

@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- Add bounded model-facing completion receipts backed by full output artifacts, while preserving full internal delegation results.
+- Add a compact registered tool schema with optional `payload` routing for rare controls, reducing standing provider context overhead.
+- Add cross-process mission-record locking so concurrent child updates preserve sibling runs, artifacts, decisions, receipts, and usage.
 - Add stable-key `runs.steer` to `workflowScript`, with foreground and async transport routing, structured receipts, trace entries, and unawaited-call enforcement (#1186).
 - Document and cover rolling `workflowScript` fanout with `runs.run`, `Promise.race`, `runs.steer`, and `Promise.all` instead of adding separate child-run event helpers (#1187).
 - Add `runner.type: external-job` with the exported provider bridge, Surf GPT Pro `gpt-pro` profile, and docs for external advisor data boundaries (#1189).
@@ -12,6 +15,10 @@
 
 ### Fixed
 - Serialize same-worktree Orca progress-tab creation so numbered tabs appear left to right in sequence instead of racing in the UI. Thanks to [@hyein-cbio](https://github.com/hyein-cbio) for #1196.
+- Preserve a successful child result when Pi emits a clean terminal response and `agent_settled` before an unrelated extension crashes during teardown; record the late failure as a warning.
+- Block startup/model replay after any observed mutation-capable tool attempt, including unknown extension and MCP tools.
+- Keep routine supervisor progress in TUI-only entries instead of parent model messages, and quote blocking child payloads as untrusted data.
+- Harden supervisor channel directories/files to private modes and reject oversized, symlinked, or non-regular request files before parsing.
 - Resolve the workflowScript parser from pi-subagents instead of the caller's working directory, so workflows start in projects that do not install Acorn.
 - Keep structured delegation integration coverage active when the test process inherits a subagent-child environment marker.
 - Bound repeated async-state queries to active, exact-id, and recent-terminal indexes instead of scanning the historical async root (#1162).
@@ -33,6 +40,9 @@
 - Preserve workflow child task output when neither the workflow nor child configures an output file (#1136).
 
 ### Changed
+- Default the registered tool description to compact mode.
+- Default bundled worker and oracle launches to fresh context; full transcript forks now require explicit selection or override.
+- Disable ambient child extensions by default; children load runtime-required and explicitly allowlisted extensions only.
 - Keep `worktree: true` workflow children on the single-child path while preserving managed patch handoffs, and remove unused foreground chain/parallel execution and durable chain management surfaces.
 - Document scripted chaining as the supported workflow API, with migration examples for removed top-level chain/task inputs.
 - Document that a host's session lifetime owns completion wakes, and how to key an idle check on live run state rather than parent activity. Thanks to [@MarcusNeufeldt](https://github.com/MarcusNeufeldt) for #1144.

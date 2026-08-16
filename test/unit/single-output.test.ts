@@ -8,6 +8,7 @@ import {
 	captureSingleOutputSnapshot,
 	extractChildWrittenOutput,
 	finalizeSingleOutput,
+	formatSingleCompletionReceipt,
 	formatSavedOutputReference,
 	injectOutputPathSystemPrompt,
 	injectSingleOutputInstruction,
@@ -258,6 +259,38 @@ describe("formatSavedOutputReference", () => {
 	it("formats larger byte sizes in KB", () => {
 		const ref = formatSavedOutputReference("/tmp/large.md", "a".repeat(49_357));
 		assert.match(ref.message, /\(48\.2 KB, 1 line\)/);
+	});
+});
+
+describe("formatSingleCompletionReceipt", () => {
+	it("returns a constant-size artifact receipt instead of child output", () => {
+		const receipt = formatSingleCompletionReceipt({
+			agent: "reviewer",
+			runId: "run-123",
+			success: true,
+			artifactPath: "/tmp/full-report.md",
+		});
+
+		assert.equal(receipt, [
+			"Completed: reviewer [run-123]",
+			"Output artifact: /tmp/full-report.md",
+			"Use bounded file reads only when details are needed.",
+		].join("\n"));
+		assert.doesNotMatch(receipt, /private child output/);
+		assert.ok(Buffer.byteLength(receipt) < 256);
+	});
+
+	it("surfaces bounded completion warnings", () => {
+		const receipt = formatSingleCompletionReceipt({
+			agent: "worker",
+			runId: "run-warning",
+			success: true,
+			warnings: [`late failure ${"x".repeat(1_000)}`],
+		});
+		assert.match(receipt, /^Completed with warnings:/);
+		assert.match(receipt, /Output artifact: unavailable/);
+		assert.match(receipt, /Warning: late failure/);
+		assert.ok(Buffer.byteLength(receipt) < 700);
 	});
 });
 

@@ -8,7 +8,7 @@ import {
 	expectsImplementationMutation,
 	hasMutationToolCall,
 } from "../../src/runs/shared/completion-guard.ts";
-import { isMutatingTool } from "../../src/runs/shared/long-running-guard.ts";
+import { isMutatingTool, isReplayUnsafeTool } from "../../src/runs/shared/long-running-guard.ts";
 
 function assistantToolCall(name: string, args: Record<string, unknown> = {}): Message {
 	return {
@@ -484,6 +484,16 @@ test("Cursor replay tool calls count only edit/write activity as mutation", () =
 	assert.equal(hasMutationToolCall([assistantToolCall("cursor", { activityTitle: "Cursor read" })]), false);
 	assert.equal(isMutatingTool("cursor", cursorEdit), true);
 	assert.equal(isMutatingTool("cursor", { activityTitle: "Cursor read" }), false);
+});
+
+test("unknown extension tools create a conservative mutation retry barrier", () => {
+	assert.equal(isMutatingTool("mcp.github.create_issue", { title: "side effect" }), true);
+	assert.equal(isMutatingTool("custom_deploy", {}), true);
+	assert.equal(isMutatingTool("read", { path: "README.md" }), false);
+	assert.equal(isMutatingTool("structured_output", {}), false);
+	assert.equal(isReplayUnsafeTool("structured_output", {}), true);
+	assert.equal(isReplayUnsafeTool("contact_supervisor", {}), true);
+	assert.equal(isReplayUnsafeTool("read", { path: "README.md" }), false);
 });
 
 test("claimed changedFiles without mutation evidence does not bypass the guard", () => {

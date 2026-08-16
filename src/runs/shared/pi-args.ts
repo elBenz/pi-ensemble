@@ -450,9 +450,9 @@ export function resolvePiLaunchToolPlan(
 		...(fanoutAuthorized ? [FANOUT_CHILD_EXTENSION_PATH] : []),
 		...(permSystemExt ? [permSystemExt] : []),
 	];
-	const disableAmbientExtensions =
-		capabilityCeiling?.denyExtensions === true ||
-		input.extensions !== undefined;
+	// Children are isolated from ambient project/global extensions by default.
+	// Only runtime-required and explicitly configured extensions are loaded.
+	const disableAmbientExtensions = true;
 	const configuredExtensions = capabilityCeiling?.denyExtensions
 		? []
 		: [

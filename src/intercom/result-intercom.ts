@@ -282,13 +282,30 @@ function formatSubagentResultIntercomMessage(input: {
 	return lines.join("\n");
 }
 
+function verifiedOutputArtifact(filePath: string | undefined): string | undefined {
+	if (!filePath) return undefined;
+	try {
+		const stat = fs.lstatSync(filePath);
+		return stat.isFile() && !stat.isSymbolicLink() ? filePath : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 export function buildSubagentResultIntercomPayload(input: GroupedResultIntercomMessageInput): SubagentResultIntercomPayload {
-	const children = input.children.map((child) => ({
-		...child,
-		outputState: child.outputState ?? "unknown",
-		summary: child.summary.trim() || "(no output)",
-		children: compactNestedResultChildren(child.children),
-	}));
+	const children = input.children.map((child) => {
+		const artifactPath = verifiedOutputArtifact(child.artifactPath);
+		return {
+			...child,
+			artifactPath,
+			outputState: child.outputState ?? "unknown",
+			summary: [
+				`Process ${child.status}.`,
+				artifactPath ? `Output artifact: ${artifactPath}` : "Output artifact: unavailable; inspect run status for diagnostics.",
+			].join("\n"),
+			children: compactNestedResultChildren(child.children),
+		};
+	});
 	const status = resolveGroupedStatus(children);
 	const summary = formatStatusCounts(countStatuses(children));
 	const firstChild = children[0];
@@ -416,6 +433,6 @@ export function formatSubagentResultReceipt(input: {
 		}
 	}
 
-	lines.push("Full grouped output was sent over intercom.");
+	lines.push("Bounded grouped receipt sent over intercom; full output remains in verified artifacts when available.");
 	return lines.join("\n");
 }

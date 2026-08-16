@@ -1214,6 +1214,21 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		assert.equal(args[args.indexOf("--tools") + 1], "read,project_mcp_inspect");
 	});
 
+	it("disables ambient child extensions by default", () => {
+		const { args } = buildPiArgs({
+			baseArgs: ["-p"],
+			task: "hello",
+			sessionEnabled: false,
+			inheritProjectContext: false,
+			inheritSkills: false,
+			tools: ["read"],
+		});
+
+		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
+		assert.ok(args.includes("--no-extensions"));
+		assert.ok(extensionArgs.some((arg) => arg.endsWith(path.join("src", "runs", "shared", "subagent-prompt-runtime.ts"))));
+	});
+
 	it("keeps tool extension paths when explicit extensions are allowlisted", () => {
 		const fixture = createMcpFixture();
 		writeMcpFixture(fixture, { tools: [{ name: "take_screenshot" }] });

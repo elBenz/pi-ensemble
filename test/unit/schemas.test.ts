@@ -157,6 +157,33 @@ try {
 	// The structural schema assertions below do not need the optional compiler package.
 }
 
+describe("compact registered subagent schema", { skip: !schemasAvailable ? "typebox not available" : undefined }, () => {
+	it("keeps standing schema bounded and routes rare controls through payload", () => {
+		const compact = schemas.createCompactSubagentParamsSchema as unknown as (() => JsonSchemaNode);
+		const schema = compact();
+		const properties = schema.properties as Record<string, JsonSchemaNode>;
+		assert.deepEqual(Object.keys(properties), [
+			"agent", "task", "action", "workflowScript", "async", "context", "cwd", "worktree", "output", "outputMode", "payload",
+		]);
+		assert.equal(schema.additionalProperties, true);
+		assert.ok(Buffer.byteLength(JSON.stringify(schema), "utf-8") < 4_000);
+	});
+
+	it("flattens action payload idempotently while explicit top-level fields win", () => {
+		const prepare = schemas.prepareCompactSubagentArguments as unknown as ((value: unknown) => unknown);
+		const prepared = prepare({ action: "status", id: "top", payload: { id: "nested", view: "fleet" } });
+		assert.deepEqual(prepared, { action: "status", id: "top", view: "fleet" });
+		assert.deepEqual(prepare(prepared), prepared);
+	});
+
+	it("preserves invalid payload values for schema rejection", () => {
+		const prepare = schemas.prepareCompactSubagentArguments as unknown as ((value: unknown) => unknown);
+		for (const payload of [null, "bad", []]) {
+			assert.deepEqual(prepare({ action: "status", payload }), { action: "status", payload });
+		}
+	});
+});
+
 describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not available" : undefined }, () => {
 	it("includes context field and default precedence for fresh/fork execution mode", () => {
 		const contextSchema = SubagentParams?.properties?.context;

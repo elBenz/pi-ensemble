@@ -54,8 +54,9 @@ describe("subagent extension child mode", () => {
 				sessionManager: { getSessionId() { return "session-test"; }, getSessionFile() { return null; } },
 				modelRegistry: { getAvailable() { return []; } },
 			};
-			await registeredTool.execute("collapse-check", { action: "list" }, new AbortController().signal, undefined, ctx);
+			const result = await registeredTool.execute("collapse-check", { action: "status", payload: { id: "payload-run-id" } }, new AbortController().signal, undefined, ctx);
 			if (calls[0] !== false) throw new Error("expected setToolsExpanded(false), got " + JSON.stringify(calls));
+			if (!JSON.stringify(result).includes("payload-run-id")) throw new Error("registered execute boundary did not flatten payload: " + JSON.stringify(result));
 		`;
 
 		execFileSync(

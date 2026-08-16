@@ -51,7 +51,7 @@ describe("result intercom formatter", () => {
 		assert.match(payload.message, /1\. reviewer-a — process completed · output unknown/);
 		assert.match(payload.message, /Run intercom target: subagent-reviewer-a-run-123-1/);
 		assert.match(payload.message, /2\. reviewer-b — process failed · output unknown/);
-		assert.match(payload.message, /Output artifact: \/tmp\/a\.md/);
+		assert.match(payload.message, /Output artifact: unavailable/);
 		assert.match(payload.message, /Session: \/tmp\/a-session\.jsonl/);
 	});
 
@@ -190,42 +190,76 @@ describe("result intercom formatter", () => {
 		assert.match(payload.message, /2\. b — process failed · output present/);
 	});
 
-	it("keeps full child summaries inside grouped payloads", () => {
-		const longSummary = `${"x".repeat(2000)}\n${"y".repeat(2000)}`;
-		const payload = buildSubagentResultIntercomPayload({
-			to: "chat",
-			runId: "run-bound",
-			mode: "single",
-			source: "foreground",
-			children: [{ agent: "worker", status: "completed", summary: longSummary }],
-		});
-		assert.equal(payload.children[0]!.summary, longSummary);
-		assert.match(payload.message, new RegExp(`${"x".repeat(2000)}\\n${"y".repeat(2000)}`));
+	it("replaces full child summaries with bounded artifact receipts", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-intercom-artifact-"));
+		try {
+			const artifactPath = path.join(root, "worker.md");
+			fs.writeFileSync(artifactPath, "full output", "utf-8");
+			const longSummary = `${"x".repeat(2000)}\n${"y".repeat(2000)}`;
+			const payload = buildSubagentResultIntercomPayload({
+				to: "chat",
+				runId: "run-bound",
+				mode: "single",
+				source: "foreground",
+				children: [{ agent: "worker", status: "completed", summary: longSummary, artifactPath }],
+			});
+			assert.equal(payload.children[0]!.summary, `Process completed.\nOutput artifact: ${artifactPath}`);
+			assert.doesNotMatch(payload.message, /x{100}|y{100}/);
+			assert.ok(Buffer.byteLength(payload.message) < 1_000);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects directory and symlink artifact candidates", { skip: process.platform === "win32" ? "symlink semantics differ" : undefined }, () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-intercom-invalid-artifact-"));
+		try {
+			const target = path.join(root, "target.md");
+			const link = path.join(root, "link.md");
+			fs.writeFileSync(target, "full output", "utf-8");
+			fs.symlinkSync(target, link);
+			for (const artifactPath of [root, link]) {
+				const payload = buildSubagentResultIntercomPayload({
+					to: "chat",
+					runId: "run-invalid-artifact",
+					mode: "single",
+					source: "foreground",
+					children: [{ agent: "worker", status: "completed", summary: "done", artifactPath }],
+				});
+				assert.equal(payload.children[0]?.artifactPath, undefined);
+				assert.match(payload.children[0]?.summary ?? "", /Output artifact: unavailable/);
+			}
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("formats compact grouped receipts with artifacts and sessions", () => {
-		const payload = buildSubagentResultIntercomPayload({
-			to: "chat",
-			runId: "run-abc",
-			mode: "parallel",
-			source: "foreground",
-			children: [
-				{ agent: "a", status: "completed", summary: "done", artifactPath: "/tmp/a.md", intercomTarget: "subagent-a-run-abc-1" },
-				{ agent: "b", status: "failed", summary: "failed", sessionPath: "/tmp/b.jsonl" },
-			],
-		});
-		const receipt = formatSubagentResultReceipt({
-			mode: "parallel",
-			runId: "run-abc",
-			payload,
-		});
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-intercom-receipt-"));
+		try {
+			const artifactPath = path.join(root, "a.md");
+			fs.writeFileSync(artifactPath, "full output", "utf-8");
+			const payload = buildSubagentResultIntercomPayload({
+				to: "chat",
+				runId: "run-abc",
+				mode: "parallel",
+				source: "foreground",
+				children: [
+					{ agent: "a", status: "completed", summary: "done", artifactPath, intercomTarget: "subagent-a-run-abc-1" },
+					{ agent: "b", status: "failed", summary: "failed", sessionPath: "/tmp/b.jsonl" },
+				],
+			});
+			const receipt = formatSubagentResultReceipt({ mode: "parallel", runId: "run-abc", payload });
 
-		assert.match(receipt, /Delivered parallel subagent results via intercom\./);
-		assert.match(receipt, /Children: 1 completed, 1 failed/);
-		assert.match(receipt, /Artifacts:\n- a \[completed\]: \/tmp\/a\.md/);
-		assert.match(receipt, /Run intercom targets \(may be inactive after completion\):\n- a \[completed\]: subagent-a-run-abc-1/);
-		assert.match(receipt, /Sessions:\n- b \[failed\]: \/tmp\/b\.jsonl/);
-		assert.match(receipt, /Full grouped output was sent over intercom\./);
+			assert.match(receipt, /Delivered parallel subagent results via intercom\./);
+			assert.match(receipt, /Children: 1 completed, 1 failed/);
+			assert.ok(receipt.includes(`Artifacts:\n- a [completed]: ${artifactPath}`));
+			assert.match(receipt, /Run intercom targets \(may be inactive after completion\):\n- a \[completed\]: subagent-a-run-abc-1/);
+			assert.match(receipt, /Sessions:\n- b \[failed\]: \/tmp\/b\.jsonl/);
+			assert.match(receipt, /Bounded grouped receipt sent over intercom/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("strips heavy output fields from receipt details", () => {

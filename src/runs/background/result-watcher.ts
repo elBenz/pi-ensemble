@@ -19,6 +19,7 @@ import {
 	resolveSubagentResultStatus,
 } from "../../intercom/result-intercom.ts";
 import { projectNestedRegistryForRoot, sanitizeSummary } from "../shared/nested-events.ts";
+import { formatSingleCompletionReceipt } from "../shared/single-output.ts";
 import { resolveWatchPath } from "../../shared/utils.ts";
 import { recordWaitCompletion } from "./wait-completions.ts";
 import { MISSION_BINDING_FILE, syncMissionFromAsyncCompletion } from "../../missions/lifecycle.ts";
@@ -130,6 +131,17 @@ function sanitizeNestedResultChildren(value: unknown, resultPath: string, label:
 		console.error(`Ignoring ${value.length - children.length} invalid nested child record(s) in subagent result file '${resultPath}' at ${label}.`);
 	}
 	return children.length ? children : undefined;
+}
+
+function verifiedOutputArtifact(...candidates: Array<string | undefined>): string | undefined {
+	for (const candidate of candidates) {
+		if (!candidate) continue;
+		try {
+			const stat = fs.lstatSync(candidate);
+			if (stat.isFile() && !stat.isSymbolicLink()) return candidate;
+		} catch { /* Try next candidate. */ }
+	}
+	return undefined;
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -383,13 +395,16 @@ export function createResultWatcher(
 				? data.results!
 				: [{ agent: data.agent ?? undefined, output: data.summary, outputState: "unknown", success: data.success }];
 			const normalizedChildren = attachNestedChildrenToResultChildren(runId, resultChildren.map((result = {}, index): SubagentResultIntercomChild => {
-				const baseOutput = hasResultChildren ? result.output : result.output ?? data.summary;
-				const hasRealOutput = typeof baseOutput === "string" && baseOutput.trim().length > 0;
-				const structuredPreview = result.structuredOutput === undefined ? undefined : JSON.stringify(result.structuredOutput, null, 2).slice(0, 4_000);
-				const output = hasRealOutput ? baseOutput : structuredPreview ? `Structured output:\n${structuredPreview}` : "(no output)";
-				const summary = result.success === false && result.error
-					? `${result.error}${hasRealOutput ? `\n\nOutput:\n${baseOutput}` : ""}`
-					: output;
+				const configuredArtifactPath = result.artifactPaths?.outputPath;
+				const fallbackOutputPath = data.asyncDir ? path.join(data.asyncDir, `output-${index}.log`) : undefined;
+				const artifactPath = verifiedOutputArtifact(configuredArtifactPath, fallbackOutputPath);
+				const summary = formatSingleCompletionReceipt({
+					agent: result.agent ?? data.agent ?? `step-${index + 1}`,
+					runId: `${runId}:${index}`,
+					success: result.success === true,
+					artifactPath,
+					warnings: result.success === false && result.error ? [result.error] : undefined,
+				});
 				const sessionPath = result.sessionFile ?? (resultChildren.length === 1 ? data.sessionFile : undefined);
 				const childNestedChildren = sanitizeNestedResultChildren(result.children, resultPath, `results[${index}].children`);
 				const childState = result.state === "paused" || result.state === "stopped"
@@ -415,7 +430,7 @@ export function createResultWatcher(
 						: "unknown",
 					summary,
 					index,
-					artifactPath: result.artifactPaths?.outputPath,
+					artifactPath,
 					...(typeof sessionPath === "string" && fsApi.existsSync(sessionPath) ? { sessionPath } : {}),
 					...(result.intercomTarget ? { intercomTarget: result.intercomTarget } : {}),
 					...(childNestedChildren ? { children: childNestedChildren } : {}),

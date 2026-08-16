@@ -74,6 +74,7 @@ import {
 	buildModelCandidates,
 	formatModelAttemptNote,
 	isRetryableModelFailure,
+	mutationRetryBarrierMessage,
 } from "../shared/model-fallback.ts";
 import {
 	SUBAGENT_STARTUP_RETRY_DELAYS_MS,
@@ -87,6 +88,7 @@ import {
 	createMutatingFailureState,
 	didMutatingToolFail,
 	isMutatingTool,
+	isReplayUnsafeTool,
 	nextLongRunningTrigger,
 	recordMutatingFailure,
 	resetMutatingFailureState,
@@ -985,7 +987,7 @@ async function runSingleAttempt(
 					result.toolBudget = toolBudgetState(options.toolBudget, progress.toolCount);
 				}
 				const mutates = isMutatingTool(evt.toolName, toolArgs);
-				observedMutationAttempt = observedMutationAttempt || mutates;
+				observedMutationAttempt = observedMutationAttempt || isReplayUnsafeTool(evt.toolName, toolArgs);
 				pendingToolResult = { tool: evt.toolName ?? "tool", path: activeTool?.path, mutates, startedAt: now };
 				fireUpdate();
 			}
@@ -1251,7 +1253,16 @@ async function runSingleAttempt(
 			const stderr = stderrTail.text();
 			const rawStdout = rawStdoutTail.text();
 			let closeError = result.error ?? toolDiagnosticError ?? assistantError;
+			const committedCompletion = agentSettledReceived
+				&& (code !== 0 || Boolean(signal) || forcedTerminationSignal)
+				&& Boolean(getFinalOutput(result.messages ?? []).trim())
+				&& !closeError;
 			const forcedDrainAfterFinalSuccess = Boolean(forcedTerminationSignal || signal) && (cleanTerminalAssistantStopReceived || agentSettledReceived) && !closeError;
+			const preservedLateFailure = committedCompletion;
+			if (preservedLateFailure) {
+				const diagnostic = stderr.trim().slice(-500);
+				result.warnings = [`Result preserved after a late child-process failure following agent settlement.${diagnostic ? ` Diagnostics: ${diagnostic}` : ""}`];
+			}
 			if (signal) result.processSignal = signal;
 			if (!closeError && isUnexplainedProcessSignal({
 				processSignal: signal,
@@ -1263,13 +1274,13 @@ async function runSingleAttempt(
 			})) {
 				closeError = formatProcessSignalError(signal!);
 			}
-			if (code !== 0 && rawStdout.trim() && !closeError && !forcedDrainAfterFinalSuccess) {
+			if (code !== 0 && rawStdout.trim() && !closeError && !forcedDrainAfterFinalSuccess && !committedCompletion) {
 				closeError = rawStdout.trim();
 			}
-			if (code !== 0 && stderr.trim() && !closeError && !forcedDrainAfterFinalSuccess) {
+			if (code !== 0 && stderr.trim() && !closeError && !forcedDrainAfterFinalSuccess && !committedCompletion) {
 				closeError = stderr.trim();
 			}
-			const finalCode = forcedDrainAfterFinalSuccess ? 0 : forcedTerminationSignal || signal ? (code ?? 1) : (code ?? 0);
+			const finalCode = forcedDrainAfterFinalSuccess || committedCompletion ? 0 : forcedTerminationSignal || signal ? (code ?? 1) : (code ?? 0);
 			if (!result.error && closeError) result.error = closeError;
 			finish(finalCode);
 		});
@@ -1465,6 +1476,7 @@ async function runSingleAttempt(
 		completionGuardTriggered = arbitration.triggered;
 		arbiterRescued = arbitration.rescued;
 	}
+	result.observedMutationAttempt = observedMutationAttempt || undefined;
 	if (completionGuard) {
 		result.effects = {
 			...(result.effects ?? {}),
@@ -1793,6 +1805,17 @@ async function runSyncCompletionInner(
 			// startup retry or model fallback. Explicit user detach retains fallback.
 			if (intercomDetached || result.timedOut || result.turnBudgetExceeded) break modelAttemptsLoop;
 			if (attemptSucceeded) break modelAttemptsLoop;
+			if (result.observedMutationAttempt) {
+				const barrierError = mutationRetryBarrierMessage(result.error);
+				result.error = barrierError;
+				result.finalOutput = barrierError;
+				attempt.error = barrierError;
+				if (result.progress) {
+					result.progress.error = barrierError;
+					result.progress.status = "failed";
+				}
+				break modelAttemptsLoop;
+			}
 
 			const startupFailure = isRetryableSubagentStartupFailure({
 				exitCode: result.exitCode,

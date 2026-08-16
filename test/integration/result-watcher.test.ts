@@ -976,8 +976,13 @@ describe("result watcher", () => {
 			assert.equal(completion?.results?.[0]?.sessionPath, childSessionPath);
 			assert.equal(payload.children?.[1]?.status, "failed");
 			assert.equal(completion?.results?.[1]?.status, "failed");
-			assert.equal(payload.children?.[1]?.summary, "B failed\n\nOutput:\nResult from b");
-			assert.equal(completion?.results?.[1]?.summary, "B failed\n\nOutput:\nResult from b");
+			assert.equal(payload.children?.[1]?.summary, "Process failed.\nOutput artifact: unavailable; inspect run status for diagnostics.");
+			assert.equal(completion?.results?.[1]?.summary, [
+				"Failed: b [run-fallback:1]",
+				"Output artifact: unavailable; use run status for diagnostics.",
+				"Warning: B failed",
+			].join("\n"));
+			assert.doesNotMatch(JSON.stringify(payload), /Result from [ab]/);
 		} finally {
 			fs.rmSync(resultsDir, { recursive: true, force: true });
 		}

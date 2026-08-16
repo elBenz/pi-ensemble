@@ -28,8 +28,14 @@ function parentToolEnv(agentDir?: string): NodeJS.ProcessEnv {
 }
 
 describe("registered subagent tool description", () => {
-	it("describes structured single-child execution and workflow orchestration", () => {
+	it("uses compact guidance by default", () => {
 		const description = buildSubagentToolDescription();
+		assert.equal(description, COMPACT_SUBAGENT_TOOL_DESCRIPTION);
+		assert.ok(description.length < FULL_SUBAGENT_TOOL_DESCRIPTION.length);
+	});
+
+	it("describes structured single-child execution and workflow orchestration in full mode", () => {
+		const description = buildSubagentToolDescription({ toolDescriptionMode: "full" });
 		assert.match(description, /^Run one child with \{ agent, task\? \}; use \{ workflowScript \} for orchestration/i);
 		assert.match(description, /SINGLE CHILD:.*starts exactly one child through the workflow runtime/i);
 		assert.match(description, /Do not combine agent\/task with action or workflowScript/i);
@@ -232,7 +238,7 @@ describe("registered subagent tool description", () => {
 	it("registers full, compact, custom, and fallback descriptions from extension config", () => {
 		const defaultAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-default-"));
 		writeExtensionConfig(defaultAgentDir, {});
-		assert.equal(readRegisteredTool(defaultAgentDir).description, FULL_SUBAGENT_TOOL_DESCRIPTION);
+		assert.equal(readRegisteredTool(defaultAgentDir).description, COMPACT_SUBAGENT_TOOL_DESCRIPTION);
 
 		const compactAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-compact-"));
 		writeExtensionConfig(compactAgentDir, { toolDescriptionMode: "compact" });
