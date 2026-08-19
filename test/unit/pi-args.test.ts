@@ -1214,7 +1214,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		assert.equal(args[args.indexOf("--tools") + 1], "read,project_mcp_inspect");
 	});
 
-	it("disables ambient child extensions by default", () => {
+	it("inherits ambient child extensions when extensions are omitted", () => {
 		const { args } = buildPiArgs({
 			baseArgs: ["-p"],
 			task: "hello",
@@ -1225,8 +1225,22 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		});
 
 		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
-		assert.ok(args.includes("--no-extensions"));
+		assert.equal(args.includes("--no-extensions"), false);
 		assert.ok(extensionArgs.some((arg) => arg.endsWith(path.join("src", "runs", "shared", "subagent-prompt-runtime.ts"))));
+	});
+
+	it("disables ambient child extensions for an explicit empty allowlist", () => {
+		const { args } = buildPiArgs({
+			baseArgs: ["-p"],
+			task: "hello",
+			sessionEnabled: false,
+			inheritProjectContext: false,
+			inheritSkills: false,
+			tools: ["read"],
+			extensions: [],
+		});
+
+		assert.ok(args.includes("--no-extensions"));
 	});
 
 	it("keeps tool extension paths when explicit extensions are allowlisted", () => {

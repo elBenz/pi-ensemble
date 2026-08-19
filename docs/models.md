@@ -98,11 +98,11 @@ If your provider rejects model IDs with thinking suffixes, set `subagents.disabl
 
 Set `subagents.defaultExtensions` to give builtin, package, user, and project agents without an `extensions` field a shared extension allowlist:
 
-- Absent: children remain isolated from ambient extension discovery and load only runtime-required extensions.
-- Empty array: explicitly records the same empty allowlist for agents that do not define one.
-- Non-empty array: supplies an explicit allowlist to agents that do not define one.
+- Absent: children use normal Pi extension discovery. Provider/auth routing and other ambient behavior therefore remain consistent with the parent Pi process.
+- Empty array: disables ambient extension discovery and loads only runtime-required extensions.
+- Non-empty array: disables ambient discovery and supplies an explicit allowlist to agents that do not define one.
 
-This isolation prevents unrelated global/project extensions from changing child completion status or using stale session UI contexts. Use `agentOverrides.<name>.extensions`, agent frontmatter, or `subagentOnlyExtensions` to opt required child extensions in.
+Use an empty or explicit allowlist when isolation matters—for example, to prevent unrelated global/project extensions from changing child completion status or using stale session UI contexts. Use `agentOverrides.<name>.extensions`, agent frontmatter, or `subagentOnlyExtensions` to control required child extensions.
 
 Project settings win over user settings. Use `agentOverrides.<name>.extensions` for per-agent settings; explicit custom-agent frontmatter remains authoritative.
 

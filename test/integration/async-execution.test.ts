@@ -566,7 +566,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(status.steps?.[0]?.error, "Detached for intercom coordination before task completion.");
 	});
 
-	it("does not misclassify extension conflicts as ambient when child isolation is active", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+	it("classifies extension conflicts as ambient when normal discovery is active", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		mockPi.onCall({
 			exitCode: 1,
 			stderr: 'Error: Failed to load extension "/tmp/pi-mcp-adapter-clone/index.ts": Flag "--mcp-config" conflicts with /tmp/pi-mcp-adapter/index.ts',
@@ -576,8 +576,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		const payload = await readAsyncPayload(id);
 		assert.equal(payload.success, false);
 		assert.match(payload.results[0]?.error ?? "", /Flag "--mcp-config" conflicts/);
-		assert.doesNotMatch(payload.results[0]?.error ?? "", /ambient Pi extensions/);
-		assert.equal(payload.results[0]?.launchResolvedExtensions?.disableAmbientExtensions, true);
+		assert.match(payload.results[0]?.error ?? "", /ambient Pi extensions/);
+		assert.equal(payload.results[0]?.launchResolvedExtensions?.disableAmbientExtensions, false);
 	});
 
 	it("persists absent output provenance when async lifecycle text is synthetic", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {

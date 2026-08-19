@@ -6527,7 +6527,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(firstDetachResponse, true);
 	});
 
-	it("does not misclassify extension conflicts as ambient when child isolation is active", async () => {
+	it("classifies extension conflicts as ambient when normal discovery is active", async () => {
 		mockPi.onCall({
 			exitCode: 1,
 			stderr: 'Error: Failed to load extension "/tmp/pi-mcp-adapter-clone/index.ts": Tool "mcpScript" conflicts with /tmp/pi-mcp-adapter/index.ts',
@@ -6538,8 +6538,8 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 		assert.equal(result.exitCode, 1);
 		assert.match(result.error ?? "", /Tool "mcpScript" conflicts/);
-		assert.doesNotMatch(result.error ?? "", /ambient Pi extensions/);
-		assert.equal(result.launchResolvedExtensions?.disableAmbientExtensions, true);
+		assert.match(result.error ?? "", /ambient Pi extensions/);
+		assert.equal(result.launchResolvedExtensions?.disableAmbientExtensions, false);
 	});
 
 	it("handles stderr without exit code as info (not error)", async () => {

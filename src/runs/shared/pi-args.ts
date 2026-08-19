@@ -450,9 +450,12 @@ export function resolvePiLaunchToolPlan(
 		...(fanoutAuthorized ? [FANOUT_CHILD_EXTENSION_PATH] : []),
 		...(permSystemExt ? [permSystemExt] : []),
 	];
-	// Children are isolated from ambient project/global extensions by default.
-	// Only runtime-required and explicitly configured extensions are loaded.
-	const disableAmbientExtensions = true;
+	// Preserve Pi's normal extension discovery unless the agent declares an
+	// extension allowlist or the inherited capability ceiling denies extensions.
+	// This lets provider/auth extensions apply to child model requests without
+	// coupling pi-ensemble to any extension-specific protocol.
+	const disableAmbientExtensions = capabilityCeiling?.denyExtensions === true
+		|| input.extensions !== undefined;
 	const configuredExtensions = capabilityCeiling?.denyExtensions
 		? []
 		: [
