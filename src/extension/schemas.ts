@@ -356,17 +356,17 @@ export function createSubagentParamsSchema(): typeof SubagentParams {
 }
 
 const CompactSubagentParams = Type.Object({
-	agent: Type.Optional(Type.String({ description: "Agent for one-child execution." })),
-	task: Type.Optional(Type.String({ description: "Task for the selected child." })),
-	action: Type.Optional(Type.String({ minLength: 1, description: "Management/control action; omit for execution." })),
-	workflowScript: Type.Optional(Type.String({ minLength: 1, description: "Workflow JavaScript using runs.run/runs.all; return the result." })),
-	async: Type.Optional(Type.Boolean({ description: "Run in background; defaults on." })),
-	context: Type.Optional(Type.String({ enum: ["fresh", "fork"], description: "Fresh by default; fork only when explicitly needed." })),
-	cwd: Type.Optional(Type.String({ description: "Execution working directory." })),
-	worktree: Type.Optional(Type.Boolean({ description: "Use managed Git worktree isolation." })),
-	output: Type.Optional(OutputOverride),
-	outputMode: Type.Optional(OutputModeOverride),
-	payload: Type.Optional(Type.Unsafe({ type: "object", additionalProperties: true, description: "Rare action or execution options. Fields are validated by the selected runtime action." })),
+	agent: Type.Optional(Type.String({ description: "Child agent; management target with action." })),
+	task: Type.Optional(Type.String()),
+	action: Type.Optional(Type.String({ minLength: 1, description: "Management/control action; omit to execute." })),
+	workflowScript: Type.Optional(Type.String({ minLength: 1, description: "JavaScript workflow using runs.run/runs.all; return result." })),
+	async: Type.Optional(Type.Boolean()),
+	context: Type.Optional(Type.String({ enum: ["fresh", "fork"], description: "fresh (default) or fork." })),
+	cwd: Type.Optional(Type.String()),
+	worktree: Type.Optional(Type.Boolean()),
+	output: Type.Optional(Type.Unsafe({ anyOf: [{ type: "string" }, { type: "boolean" }] })),
+	outputMode: Type.Optional(Type.String({ enum: ["inline", "file-only"] })),
+	payload: Type.Optional(Type.Unsafe({ type: "object", additionalProperties: true, description: "Rare options; runtime validates fields." })),
 }, { additionalProperties: true });
 
 export function createCompactSubagentParamsSchema(): typeof CompactSubagentParams {
@@ -382,19 +382,10 @@ export function prepareCompactSubagentArguments(value: unknown): Static<typeof C
 }
 
 const SubagentWaitParamsSchema = Type.Object({
-	id: Type.Optional(Type.String({
-		description: "Async run or remembered detached foreground run id/prefix to wait for one specific run. Omit to wait across every active async run started in this session.",
-	})),
-	nonBlocking: Type.Optional(Type.Boolean({
-		description: "When true, resolve id to one exact run, persist a wake subscription, and return immediately. The originating session is woken on completion, failure, attention, reconciliation failure, or timeout. Requires id and cannot be combined with all.",
-	})),
-	all: Type.Optional(Type.Boolean({
-		description: "Wait for ALL active runs to finish. Default false: return as soon as the first run finishes, so a fleet manager can spawn a replacement and wait again. Ignored when id targets a single run.",
-	})),
-	timeoutMs: Type.Optional(Type.Integer({
-		minimum: 1,
-		description: "Give up waiting after this many milliseconds (the runs keep going regardless). Defaults to 1800000 (30 minutes).",
-	})),
+	id: Type.Optional(Type.String({ description: "Run id/prefix; omit for all session-owned work." })),
+	nonBlocking: Type.Optional(Type.Boolean({ description: "Arm exact-run wake subscription and return. Requires id; excludes all." })),
+	all: Type.Optional(Type.Boolean({ description: "Wait for all initially active work; default returns after first change." })),
+	timeoutMs: Type.Optional(Type.Integer({ minimum: 1, description: "Wait limit in ms; work continues. Default 1800000." })),
 });
 
 export const SubagentWaitParams = keepTopLevelParameterDescriptions(SubagentWaitParamsSchema);

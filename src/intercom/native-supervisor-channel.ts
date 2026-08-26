@@ -83,8 +83,8 @@ const ContactSupervisorParamsSchema = Type.Object({
 	interview: Type.Optional(Type.Unsafe({ type: "object", additionalProperties: true })),
 }, { additionalProperties: false });
 
-const IntercomParamsSchema = Type.Object({
-	action: Type.String({ enum: ["list", "send", "ask", "reply", "pending", "status"] }),
+const ParentSupervisorParamsSchema = Type.Object({
+	action: Type.String({ enum: ["list", "reply", "pending", "status"] }),
 	to: Type.Optional(Type.String()),
 	message: Type.Optional(Type.String()),
 	replyTo: Type.Optional(Type.String()),
@@ -602,12 +602,12 @@ function publicPendingRequests(pending: Map<string, PendingSupervisorRequest>): 
 	}));
 }
 
-function buildParentSupervisorTool(pending: Map<string, PendingSupervisorRequest>, state: SubagentState): ToolDefinition<typeof IntercomParamsSchema, Record<string, unknown>> {
+function buildParentSupervisorTool(pending: Map<string, PendingSupervisorRequest>, state: SubagentState): ToolDefinition<typeof ParentSupervisorParamsSchema, Record<string, unknown>> {
 	return {
 		name: NATIVE_SUPERVISOR_TOOL_NAME,
 		label: "Subagent Supervisor",
-		description: "Native pi-subagents supervisor channel. Use reply/pending/status to answer child subagent requests without overriding pi-intercom.",
-		parameters: IntercomParamsSchema,
+		description: "Reply to child supervisor requests; pending/list shows requests, status checks channel.",
+		parameters: ParentSupervisorParamsSchema,
 		async execute(_id, params) {
 			refreshPendingRequests(pending, state, state.lastUiContext ?? undefined);
 			const input = params as IntercomParams;

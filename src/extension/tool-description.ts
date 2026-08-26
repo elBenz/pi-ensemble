@@ -33,24 +33,22 @@ MANAGEMENT / CONTROL (use action; omit execution fields):
 
 ${SUBAGENT_SAFETY_GUIDANCE}`;
 
-export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Run one child with { agent, task? }; use { workflowScript } for orchestration. Omit action for execution. Use action only for management/control actions.
+export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate work to child agents. Use {action:"list"} before first launch; select executable agents.
 
-EXECUTE:
-• Call { action:"list" } first and use only executable/non-disabled agents.
-• SINGLE {agent:"worker",task:"..."} starts exactly one child through the workflow runtime. Workflow-level fields remain child defaults. Do not combine agent/task with action or workflowScript.
-• SCRIPT {workflowScript:"return runs.run('main', {agent:'worker', task:'...'})"}. Use stable-key runs.run for one child and runs.all for parallel work. Await runs.steer(key,message,options?) to guide a prior keyed child; it returns queued, delivered, missed, or failed and never accepts a raw run id. Always await or return steering calls. Use {action:"children.list"} for recent retained workflow children and resume only rows reported resumable. Use {action:"resume",id:"run-id",message:"..."} for a simple follow-up or challenge; resume keeps the stored agent/model/tool contract. If none is resumable, launch a same-role fallback challenge and label it as fallback. Inside workflowScript use runs.run(key,{resume:"run-id",task:"follow-up"}) when the script must wait for completion and continue from the latest returned runId. Workflows get async state.get/state.set through their automatic or explicit mission; mission:false does not. Scripts are ordinary JavaScript statement bodies; use explicit return for a useful result. Use top-level await, plain helper functions, or explicit Promise chains; nested async function, arrow, and method helpers are rejected. For task text with Markdown fences or shell blocks, build quoted lines instead of nesting raw template literals: \`const task=["Run:","\`\`\`bash","npm test","\`\`\`"].join("\\n")\`. Use JavaScript for sequence, branching, retries, and aggregation. For repository mutation lanes, use worktree:true on the workflow or runs.run/runs.all item for managed isolation. Scripts normally start async unless config sets asyncByDefault:false; set async:true explicitly when async behavior matters. async:false requires a foreground-behavior reason (user watching, foreground-only UI) and auto-enables a same-repo live chat card unless chatProgress is off.
-• Example: {workflowScript:"const [a,b]=await runs.all([{key:'a',agent:'agent-a',task:'Implement A',worktree:true},{key:'b',agent:'agent-b',task:'Implement B',worktree:true}]); return [a.output,b.output]"}
-• context can be fresh or fork. Explicit context wins; omitted context follows defaultSubagentContext before agent defaultContext. timeoutMs/maxRuntimeMs apply to foreground and async workflows; foreground workflows default to 30 minutes and async workflows have no default timeout. Omit acceptance for reviewer/read-only calls.
+EXECUTE — omit action.
+• One child: {agent:"worker",task:"..."}. Agent/task cannot combine with action or workflowScript.
+• Workflow: {workflowScript:"return runs.run('main',{agent:'worker',task:'...'})"}. Use stable keys; runs.run launches one, runs.all launches parallel work. Await or return runs.steer(key,message,options?); it targets a prior key, not a run id.
+• Scripts are JavaScript statement bodies: return results explicitly; use top-level await, plain functions, or Promise chains. Nested async helpers are rejected. Build fenced task text with quoted lines joined by "\\n". Mission workflows expose async state.get/state.set; mission:false does not.
+• Resume only entries marked resumable by {action:"children.list"}. Use {action:"resume",id,message} for simple follow-up, or runs.run(key,{resume,task}) when the workflow must await it; continue from latest runId. Resume preserves child contract. Otherwise launch a labeled same-role fallback.
+• Isolate mutation lanes with worktree:true. Keep one writer per cwd/worktree; use fresh read-only reviewers, then synthesize in parent.
 
-MANAGE / CONTROL:
-• Use action without execution fields for list/get/models/guide/authoring, refine/refine.show/refine.rollback, mission, watchdog, status, interrupt, stop, resume, steer, script-only scheduling, diagnostics, and other management actions. guide reads shipped current-version docs by topic.
-• A mission object needs exactly one non-empty title or summary; objective and labels are optional. goal may only be true and requires budget:{tokens}.
+MANAGE — set action and omit execution fields. Use guide for current action/config details.
 
-ASYNC / SAFETY:
-• Omitted async follows asyncByDefault config; set async:true explicitly when async behavior matters. Continue independent work only until its next dependency barrier; consume the result before work that depends on it. Do not sleep or poll merely to wait; use subagent_wait only when this turn must receive results.
-• Ordinary children are not orchestrators. Keep one writer per cwd/worktree and use fresh read-only reviewers for independent checks.
-• Oracle/advisor consultations use available supervisor dialogue for material unknowns; request one-shot when desired.
-• Status and artifacts live under asyncId/asyncDir with status.json, events.jsonl, output logs, and {action:"status",id:"..."}.`;
+ASYNC / SAFETY
+• Background is default. Use async:false only for foreground UI. Continue independent work until dependency barrier; then consume result. Return control in interactive chat; use subagent_wait only when this turn must receive results.
+• Ordinary children execute assigned work; only configured fanout children delegate. Advisors use supervisor dialogue for material unknowns.
+• context is fresh or fork; explicit value wins. Omit acceptance for read-only/reviewer work.
+• Mission objects set exactly one title or summary. goal:true requires budget:{tokens}.`;
 
 
 function isToolDescriptionMode(value: unknown): value is ToolDescriptionMode {

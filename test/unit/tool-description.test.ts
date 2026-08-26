@@ -63,26 +63,32 @@ describe("registered subagent tool description", () => {
 		assert.match(description, /status\.json/);
 	});
 
-	it("offers a compact mode that keeps the two-tier contract and safety guidance", () => {
+	it("offers compact execution, management, and safety guidance", () => {
 		const description = buildSubagentToolDescription({ toolDescriptionMode: "compact" });
 		assert.equal(description, COMPACT_SUBAGENT_TOOL_DESCRIPTION);
-		assert.match(description, /^Run one child with \{ agent, task\? \}; use \{ workflowScript \} for orchestration/i);
-		assert.match(description, /SINGLE .*starts exactly one child through the workflow runtime/i);
-		assert.match(description, /runs\.run for one child and runs\.all for parallel work/i);
-		assert.match(description, /runs\.steer\(key,message,options\?\).*prior keyed child/i);
-		assert.match(description, /never accepts a raw run id/i);
-		assert.match(description, /repository mutation lanes.*worktree:true.*runs\.run\/runs\.all.*managed isolation/i);
+		assert.match(description, /^Delegate work to child agents/i);
+		assert.match(description, /\{action:"list"\} before first launch.*executable agents/i);
+		assert.match(description, /EXECUTE — omit action/i);
+		assert.match(description, /One child:.*agent.*task/i);
+		assert.match(description, /runs\.run launches one, runs\.all launches parallel work/i);
+		assert.match(description, /runs\.steer.*prior key, not a run id/i);
+		assert.match(description, /return results explicitly/i);
+		assert.match(description, /marked resumable.*children\.list/i);
+		assert.match(description, /latest runId/i);
+		assert.match(description, /Resume preserves child contract/i);
+		assert.match(description, /same-role fallback/i);
+		assert.match(description, /worktree:true/i);
+		assert.match(description, /one writer per cwd\/worktree/i);
+		assert.match(description, /MANAGE — set action/i);
+		assert.match(description, /guide for current action\/config details/i);
+		assert.match(description, /Background is default/i);
+		assert.match(description, /subagent_wait only when this turn must receive results/i);
+		assert.match(description, /only configured fanout children delegate/i);
+		assert.match(description, /supervisor dialogue/i);
+		assert.match(description, /exactly one title or summary/i);
+		assert.match(description, /goal:true requires budget:\{tokens\}/i);
 		assert.doesNotMatch(description, /tasks\[\]|chain\[\]/i);
-		assert.match(description, /subagent_wait/i);
-		assert.match(description, /continue independent work only until its next dependency barrier; consume the result before work that depends on it/i);
-		assert.match(description, /children\.list.*resume only rows reported resumable/i);
-		assert.match(description, /\{action:\"resume\",id:\"run-id\",message:\"\.\.\.\"\} for a simple follow-up or challenge/i);
-		assert.match(description, /resume keeps the stored agent\/model\/tool contract/i);
-		assert.match(description, /Oracle\/advisor consultations use available supervisor dialogue/i);
-		assert.match(description, /same-role fallback challenge and label it as fallback/i);
-		assert.match(description, /exactly one non-empty title or summary/i);
-		assert.match(description, /goal may only be true and requires budget:\{tokens\}/i);
-		assert.ok(description.length < FULL_SUBAGENT_TOOL_DESCRIPTION.length);
+		assert.ok(description.length < 2_000, `expected compact description under 2k chars, got ${description.length}`);
 	});
 
 	it("renders a custom project description with placeholders and mandatory safety guidance", () => {
@@ -191,7 +197,7 @@ describe("registered subagent tool description", () => {
 		assert.ok(warnings.some((message) => message.includes("Ignoring invalid toolDescriptionMode")));
 	});
 
-	function readRegisteredTool(agentDir: string): { description: string; properties: string[] } {
+	function readRegisteredTool(agentDir: string): { description: string; properties: string[]; schemaChars: number } {
 		const script = String.raw`
 			import registerSubagentExtension from "./src/extension/index.ts";
 			const events = { on() { return () => {}; }, emit() {} };
@@ -212,7 +218,7 @@ describe("registered subagent tool description", () => {
 			});
 			registerSubagentExtension(fakePi);
 			if (!registeredTool) throw new Error("tool not registered");
-			process.stdout.write(JSON.stringify({ description: registeredTool.description, properties: Object.keys(registeredTool.parameters.properties) }));
+			process.stdout.write(JSON.stringify({ description: registeredTool.description, properties: Object.keys(registeredTool.parameters.properties), schemaChars: JSON.stringify(registeredTool.parameters).length }));
 		`;
 		const output = execFileSync(
 			process.execPath,
@@ -260,10 +266,12 @@ describe("registered subagent tool description", () => {
 		assert.equal(readRegisteredTool(invalidAgentDir).description, FULL_SUBAGENT_TOOL_DESCRIPTION);
 	});
 
-	it("registers the trimmed schema and description by default", () => {
+	it("registers bounded schema and description payloads by default", () => {
 		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-trimmed-"));
 		const tool = readRegisteredTool(agentDir);
 		assert.equal(tool.properties.includes("step"), false);
 		assert.doesNotMatch(tool.description, /append-step|approve-checkpoint|reject-checkpoint/);
+		assert.ok(tool.description.length < 2_000, `expected description under 2k chars, got ${tool.description.length}`);
+		assert.ok(tool.schemaChars < 1_000, `expected schema under 1k chars, got ${tool.schemaChars}`);
 	});
 });
