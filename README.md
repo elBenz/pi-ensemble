@@ -52,6 +52,36 @@ For local development:
 pi install /absolute/path/to/pi-ensemble
 ```
 
+### Run a Route benchmark
+
+Create a declarative JSON case, then run one isolated Agent role benchmark:
+
+```bash
+npm run benchmark -- ./benchmarks/scout-case.json --output ./benchmark-results/scout-run-1
+# Installed package: pi-ensemble-benchmark ./benchmarks/scout-case.json --output ./benchmark-results/scout-run-1
+```
+
+```json
+{
+  "id": "scout-synthetic",
+  "agentRole": "scout",
+  "route": {
+    "modelTier": "GPT-5.6 Luna",
+    "model": "openai-codex/gpt-5.6-luna",
+    "thinkingLevel": "medium"
+  },
+  "prompt": "Find the relevant file and report its contents.",
+  "fixture": "./fixtures/scout-synthetic",
+  "evaluator": { "kind": "output-includes", "expected": "known result" },
+  "timeoutMs": 120000,
+  "mutationPolicy": "forbid"
+}
+```
+
+`fixture` resolves relative to the case file. Mutation policy accepts `forbid`, `allow`, or `require`. Evaluators run only after candidate exit; expectations never enter candidate prompt or workspace. Each run creates fresh workspace/session plus read-only `receipt.json`, derived `result.json`, and `report.md`. Set `PI_SUBAGENT_PI_BINARY` to substitute a Pi-compatible process shim.
+
+For host-side validation, use `evaluator.kind: "command"` with `command`, optional `args`, `expectations`, and `timeoutMs`. `{input}` and `{workspace}` argument values resolve after candidate exit; the same paths are exposed as `PI_BENCHMARK_EVALUATOR_INPUT` and `PI_BENCHMARK_WORKSPACE`. Evaluator input JSON contains `candidateOutput`, `workspace`, and `expectations`. Commands are trusted case configuration and run with operator permissions.
+
 ### Replacing `pi-subagents`
 
 Do not load both packages simultaneously: both register the same `subagent` tools and `/subagents-*` commands.

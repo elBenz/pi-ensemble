@@ -168,6 +168,11 @@ function defaultResponse() {
 }
 
 function writeDeclaredFiles(response) {
+	if (Array.isArray(response.makeDirs)) {
+		for (const dir of response.makeDirs) {
+			if (typeof dir === "string") fs.mkdirSync(path.resolve(process.cwd(), dir), { recursive: true });
+		}
+	}
 	if (!Array.isArray(response.writeFiles)) return;
 	for (const file of response.writeFiles) {
 		if (!file || typeof file.path !== "string" || typeof file.content !== "string") continue;
@@ -218,13 +223,15 @@ function isJsonMode(args) {
 	return false;
 }
 
-function writeSessionFile(args) {
+function writeSessionFile(args, response) {
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] !== "--session") continue;
 		const sessionFile = args[i + 1];
 		if (!sessionFile) return;
 		fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
-		fs.writeFileSync(sessionFile, "", { flag: "a" });
+		const entries = Array.isArray(response.sessionEntries) ? response.sessionEntries : [];
+		const content = entries.map((entry) => JSON.stringify(entry)).join("\n");
+		fs.writeFileSync(sessionFile, content ? `${content}\n` : "", { flag: "a" });
 		return;
 	}
 }
@@ -333,7 +340,7 @@ async function main() {
 	if (response.ignoreSigterm === true) {
 		process.on("SIGTERM", () => {});
 	}
-	writeSessionFile(args);
+	writeSessionFile(args, response);
 	writeToolDiagnostic(response);
 	const callPath = path.join(queueDir, `call-${Date.now()}-${process.pid}-${Math.random().toString(16).slice(2)}.json`);
 	const callTempPath = `${callPath}.tmp-${process.pid}-${Date.now()}`;
