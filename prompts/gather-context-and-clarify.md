@@ -1,13 +1,12 @@
 ---
-description: Use subagents to gather context, then ask clarifying questions
+description: Gather evidence, then clarify unresolved decisions
+argument-hint: "[target or focus]"
 ---
 
-Based on our discussion and my intent, launch focused context-gathering subagents before planning or implementing.
+Target/focus: $@
 
-Use `scout` to inspect the relevant local files, existing patterns, constraints, tests, and likely integration points. Use `researcher` when external docs, recent sources, ecosystem context, or primary evidence would improve the answer.
+Build only the context needed to decide or implement this target.
 
-Give each subagent a specific meta prompt. Ask them to return concise findings plus the remaining clarification questions that matter for implementation confidence.
+Launch `scout` for local code evidence. Add `researcher` only when external docs, recent behavior, or primary evidence can change the decision. Give each child a distinct question, exact target, evidence requirements, and concise output contract.
 
-After they return, synthesize what we know and use the `interview` tool to ask me the unresolved questions needed to reach a shared understanding.
-
-$@
+Synthesize known facts, constraints, likely change seam, and open questions. Ask me through `interview` only about unresolved user-owned decisions that block planning or implementation. If none remain, state shared understanding and finish without an interview.

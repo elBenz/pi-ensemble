@@ -362,12 +362,12 @@ The intended oracle loop is:
 5. only then should `worker` implement
 
 ```typescript
-// Advisory review in a branched thread. Oracle defaults to forked context.
+// Advisory review in a branched thread. Request fork explicitly.
 subagent({
   workflowScript: `return runs.run("oracle-check", { agent: "oracle", task: "Review my current direction, challenge assumptions, and propose the best next move." })`
 })
 
-// Implementation only after explicit approval. Worker defaults to forked context.
+// Implementation only after explicit approval. Request fork explicitly when inherited context matters.
 subagent({
   workflowScript: `return runs.run("implementation", { agent: "worker", task: "Implement the approved approach: ..." })`
 })

@@ -1,43 +1,18 @@
 ---
-description: Review/fix loop until clean
+description: Implement/review/fix until clean or capped
+argument-hint: "[target, implementation request, or round cap]"
 ---
 
-Run a parent-orchestrated review loop for the requested work.
+Target/request: $@
 
-Use the `subagent` tool. Keep the parent session as the loop controller and final decision-maker. Child subagents must receive concrete role-specific tasks; they must not run subagents or manage the loop themselves unless the parent intentionally selected an explicit fanout agent whose builtin `tools` includes `subagent` for that assigned fanout.
+Run a parent-controlled loop. Default cap: 3 review rounds. One writer owns the active cwd/worktree; all reviewers use fresh context and remain read-only.
 
-Default to a maximum of 3 review rounds unless I specify a different cap. Count a review round each time fresh-context reviewers inspect the current diff after a worker pass. Stop early when reviewers find no blockers or fixes worth doing now.
+1. **Implement:** when requested, launch one async `worker` with approved scope, evidence/context paths, success criteria, authority boundary, focused validation, and handoff requirements. Start at review when the current diff is the target.
+2. **Review:** resolve changed paths and provide 1–3 `reviewer` agents the diff text/artifact or explicit file list. Choose distinct risk-based lenses. A round completes when every lens reports evidence-backed findings or clean status.
+3. **Disposition:** classify every finding as blocker, fix now, optional, or defer/reject with reason. Ask me before any unapproved product, architecture, scope, or authority decision.
+4. **Fix:** when implementation is authorized and fix-now items exist, launch one worker to apply only that synthesis and run focused validation.
+5. **Repeat:** review again only after material fixes. Stop when no fix-now items remain, only optional/deferred feedback remains, a user decision blocks progress, or cap is reached.
 
-If the invocation includes an implementation request, first launch one async `worker` to implement the approved scope. If the current diff is already the target, start with review. The sequence can be launched up front with `workflowScript` when it is already clear, or continued as follow-up single-agent runs after each async completion. For an initial workflowScript, pass `async: true` so the main chat is unblocked; do not set `clarify: true` unless I explicitly want the foreground clarify UI. Use only one writer against the active worktree at a time unless I explicitly ask for isolated worktrees.
+Use `workflowScript` and async execution. As a conservative orchestration policy, do not pass `turnBudget`, a hard `toolBudget`, or a tight `usageBudget` to mutation-capable workers: default tool budget blocks read/search tools rather than mutation tools. Before an elapsed deadline, request a checkpoint after the current tool returns with changed files, build/test state, remaining work, and commit or PR state. Child handoffs are intermediate until the loop stop criterion is met.
 
-As a conservative orchestration policy, do not set `turnBudget`, a hard `toolBudget`, or a tight `usageBudget` on implementation or fix workers. A default tool budget blocks read/search tools rather than mutation tools, and reported usage has no reservation model, so count or usage limits still do not measure delivery safety. Give each writer a narrow delivery slice and an outer elapsed deadline with enough margin. Before that deadline, request a checkpoint after the current tool returns with changed files, build/test state, remaining work, and commit or PR state. An elapsed timeout is not a mutation-safe boundary and must not be the checkpoint trigger.
-
-For each review round, launch fresh-context `reviewer` agents in parallel. Reviewers must inspect the repository, relevant instructions, and current diff directly from files and commands. They must not rely on the main conversation history and must not edit files.
-
-Choose review angles from the actual change. Common angles are correctness/regressions, tests/validation, and simplicity/maintainability. Add security, performance, docs/API contracts, or user-flow validation when the work calls for it. Prefer three strong reviewers over many vague reviewers.
-
-After reviewers return, synthesize their feedback into:
-- blockers or scope/product/architecture decisions that need user approval;
-- fixes worth doing now;
-- optional improvements;
-- feedback to ignore or defer, with a short reason.
-
-Do not blindly apply every reviewer suggestion. If reviewers surface an unapproved product, scope, or architecture decision, pause and ask me before launching a fix worker.
-
-When an async implementation worker completes, treat its handoff as the transition into review, not as final completion, unless I explicitly asked for worker-only work, review-only output, or to stop after implementation.
-
-When there are fixes worth doing now and the workflow is implementation-authorized, launch one async forked `worker` without hard turn or tool-call caps to apply only those synthesized fixes. Ask it to preserve the approved scope, run focused validation, and report changed files, commands run with exit codes, validation evidence, surprises, and anything left undone.
-
-After a fix worker returns, run another review round only when it made material changes or addressed non-trivial findings. Do not keep looping for optional polish, speculative improvements, or findings already deferred by the parent.
-
-Stop and summarize when one of these is true:
-- reviewers find no blockers or fixes worth doing now;
-- remaining feedback is optional, speculative, or intentionally deferred;
-- reviewers surface an unapproved decision that needs me;
-- the max review-round cap is reached.
-
-On completion, inspect the final diff yourself, run or confirm focused validation where appropriate, and summarize the loop: rounds run, fixes applied, validation, remaining deferred items, and why the loop stopped.
-
-Additional target, implementation request, max-iteration cap, or review focus from the slash command invocation:
-
-$@
+At completion, inspect final diff, confirm focused validation, and report rounds, changes, evidence, deferred items, and stop reason.

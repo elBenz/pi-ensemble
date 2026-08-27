@@ -1,42 +1,33 @@
 ---
 name: pi-ensemble
-description: |
-  Delegate work to builtin or custom subagents with single-agent, parallel,
-  scripted-chaining, async, forked-context, and coordinated workflows. Use
-  for advisory review, implementation handoffs, and multi-step tasks where a
-  single agent should stay in control while other agents contribute context,
-  planning, or execution.
+description: Delegate and coordinate subagents for advisory review, recon, research, implementation, parallel analysis, and multi-step workflows while parent retains control.
 ---
 
 # Pi Ensemble
 
-This skill is for the main parent orchestrator only. Do not inject or follow it inside spawned child subagents. The parent session owns delegation, orchestration, review fanout, and final fix-worker launches. Ordinary children should not run their own subagent workflows; the explicit exception is a delegated fanout child whose resolved builtin `tools` includes `subagent`, and that child may use `subagent` only for the fanout work the parent assigned.
+Parent orchestrator only. Ordinary children execute assigned work; only an explicitly assigned fanout child may delegate within that lane.
 
-Use this skill when the parent orchestrator needs one specialized child or composed orchestration. Use `workflowScript` for all execution, including one isolated child. Chaining is still supported, but it is code-driven: use `await runs.run(...)` for sequential steps, `runs.all([...])` for parallel fanout, and ordinary JavaScript for branching, retries, gate monitors, and aggregation. Keep workflow helpers portable: use plain helper functions or explicit Promise chains, not nested `async function` helpers, async arrows, or async methods. Do not use legacy top-level `chain` / `tasks` inputs or durable `.chain.md` execution. Scripted workflows normally start asynchronously unless config sets `asyncByDefault:false`; set `async:true` explicitly when async behavior matters. Pass `async:false` only when foreground behavior is the actual requirement, such as a user-requested live child transcript, a foreground renderer/detach test, or another foreground-only control surface. Do not use foreground for final reviews, backlog gates, run-to-completion convenience, or because no other work is available.
+Execute through `workflowScript`: `runs.run` for one child, `runs.all` for parallel children, ordinary JavaScript for sequencing and gates.
 
-## How to use this router
+## Load one matching reference
 
-Read the matching reference file before acting. Paths are relative to this `SKILL.md`; resolve them against `skills/pi-ensemble/` and load them with the read tool.
+Paths are relative to this file. Read another only when a concrete decision requires it.
 
-| Task | Read |
+| Branch | Reference |
 | --- | --- |
-| Decide whether to delegate, choose agents, compare tool versus slash commands, apply prompt techniques, or understand builtin roles | `references/prompting-and-roles.md` |
-| Run one-child, scripted, async, scheduled, mission-backed, forked, watchdog, oracle, or intercom-coordinated workflows | `references/execution-controls.md` |
-| List/create/update/delete/eject/disable agents, inspect legacy chain records, edit agent files, use prompt-template integration, or expose extension RPC | `references/management-authoring-rpc.md` |
-| Check safety constraints, best practices, standard workflows, or error handling | `references/constraints-and-recipes.md` |
+| **Prompt/role selection:** whether to delegate, builtin roles, task contracts, prompt recipes, model tiering | `references/prompting-and-roles.md` |
+| **Execution/control:** async, chaining, fork, resume, steering, schedules, missions, watchdog, intercom | `references/execution-controls.md` |
+| **Authoring/management:** list or edit agents, refinements, prompt integration, extension RPC | `references/management-authoring-rpc.md` |
+| **Safety/recipes:** authority, worktrees, one-writer patterns, Fable phases, error handling | `references/constraints-and-recipes.md` |
 
-For broad or uncertain requests, read more than one reference. For complex work, start with `references/prompting-and-roles.md` and `references/execution-controls.md`, then consult `references/constraints-and-recipes.md` before launching or reviewing child work.
+## Invariants
 
-## Always-on constraints
-
-- Keep the parent as orchestrator and final decision-maker.
-- Use one writer per cwd/worktree unless isolated worktrees are intentional.
-- For cross-codebase work, record the target repo, explicit `cwd`, authority boundary, and expected output before launch. Do not assume the parent session cwd is the child repo.
-- For parallel fanout, compare child prompts before launch. Do not send clone prompts with only issue numbers, titles, or broad file globs swapped; each child needs a lane-specific task, source seam, prior evidence, and decision that remains distinct without the item number. Launch that fanout as one async `workflowScript` with stable keys and aggregate output unless there is truly only one child.
-- Prefer fresh-context review/validation fanout, then synthesize and apply fixes in the parent.
-- Use async/background by default. Final reviews, gate checks, oracle checks, and backlog lanes stay async unless foreground UI behavior is itself being tested or the user explicitly asked to watch that child live. Do not poll just to wait. For adaptive gates, branch in `workflowScript`.
-- For Pi extension repos whose canonical checkout is under `~/.pi/agent/extensions`, never create lane worktrees as sibling directories there. Pi auto-loads `~/.pi/agent/extensions/*/index.ts`, so sibling worktrees can register duplicate tools. Put lanes under `~/.pi/agent/worktrees`, another worktree base outside auto-discovery, or a temporary clone. If a lane must run the modified extension itself, use an isolated Pi config home with `PI_CODING_AGENT_DIR=<lane-config> pi --no-extensions -e <lane>/index.ts`. Use full containers only when path and config isolation are insufficient.
-- Preserve capability ceilings, including child tool restrictions and session-scoped allowed-agent restrictions.
-- Escalate unresolved product, architecture, authority, release, merge, or safety decisions upward instead of letting a child decide silently.
-- Treat receipts, CI, review bots, and external-run records as evidence, not authority to merge, close, comment, publish, or release.
-- As a conservative orchestration policy, do not pass `turnBudget`, a hard `toolBudget`, or a tight `usageBudget` to mutation-capable workers. The default tool budget blocks read/search tools rather than mutation tools, and reported usage has no reservation model. If a worker is interrupted after a tool call starts, checkpoint after the current tool returns with changed files, build/test state, and commit or PR state.
+- Parent owns orchestration, acceptance, and unresolved decisions.
+- One writer per cwd/worktree; parallelize read-only work unless writers are isolated intentionally.
+- Cross-repo tasks name exact repo, `cwd`, authority boundary, and output.
+- Fanout lanes need distinct goals/evidence, stable keys, and one aggregated workflow.
+- Fresh context suits independent review; fork only when inherited conversation is required.
+- Async is default. Foreground requires user-visible or foreground-only behavior.
+- Preserve capability ceilings and escalate unapproved product, architecture, authority, release, merge, or safety decisions.
+- Treat receipts and automated reviews as evidence, not operational authority.
+- As a conservative orchestration policy, do not pass `turnBudget`, a hard `toolBudget`, or a tight `usageBudget` to mutation-capable workers. Default tool budget blocks read/search tools rather than mutation tools. Before an elapsed deadline, request a checkpoint after the current tool returns with changed files, build/test state, remaining work, and commit or PR state.
