@@ -1,0 +1,22 @@
+{
+  "id": "worker-historical-mission-lock",
+  "agentRole": "worker",
+  "route": {
+    "modelTier": "GPT-5.6 Terra",
+    "model": "openai-codex/gpt-5.6-terra",
+    "thinkingLevel": "high"
+  },
+  "prompt": "Fix mission-lock acquisition so Windows directory-rename collisions retry safely without weakening existing collision handling. Make the smallest source and regression-test change. Run the relevant tests.",
+  "source": {
+    "repository": "../..",
+    "revision": "bb54106d4ab060546c7829cc0427d0e7e27b2c03"
+  },
+  "evaluator": {
+    "kind": "command",
+    "command": "node",
+    "args": ["{caseDir}/evaluator.mjs"],
+    "timeoutMs": 30000
+  },
+  "timeoutMs": 600000,
+  "mutationPolicy": "require"
+}
