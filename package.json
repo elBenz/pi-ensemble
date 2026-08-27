@@ -8,6 +8,9 @@
   ],
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "pi-ensemble-benchmark": "./benchmark-runner.mjs"
+  },
   "exports": {
     ".": "./index.ts",
     "./background-work": "./src/api/background-work.ts",
@@ -43,6 +46,7 @@
   ],
   "files": [
     "index.ts",
+    "benchmark-runner.mjs",
     "src/**/*.ts",
     "async-retention-discovery-worker.mjs",
     "inspector-runner.mjs",
@@ -54,6 +58,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
+    "benchmark": "node ./benchmark-runner.mjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit",
     "test:unit": "node --experimental-strip-types --import ./test/support/isolated-temp-root.mjs --test test/unit/*.test.ts",

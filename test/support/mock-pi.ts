@@ -30,6 +30,10 @@ interface MockPiResponse {
 	matchArgIncludes?: string | string[];
 	/** Files the mock child writes to disk before emitting output, standing in for its write-tool side effects. */
 	writeFiles?: Array<{ path: string; content: string }>;
+	/** Directories the mock child creates, including empty-directory mutation fixtures. */
+	makeDirs?: string[];
+	/** JSONL entries written to the configured Pi session file. */
+	sessionEntries?: unknown[];
 	/** Writes the structured-output capture file without emitting a structured_output tool event. */
 	structuredOutputCapture?: unknown;
 	runtimeAcknowledgedExtensions?: unknown;
