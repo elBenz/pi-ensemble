@@ -264,16 +264,17 @@ describe("formatSavedOutputReference", () => {
 
 describe("formatSingleCompletionReceipt", () => {
 	it("returns a constant-size artifact receipt instead of child output", () => {
+		const artifactPath = path.resolve("/tmp/full-report.md");
 		const receipt = formatSingleCompletionReceipt({
 			agent: "reviewer",
 			runId: "run-123",
 			success: true,
-			artifactPath: "/tmp/full-report.md",
+			artifactPath,
 		});
 
 		assert.equal(receipt, [
 			"Completed: reviewer [run-123]",
-			"Output artifact: /tmp/full-report.md",
+			`Output artifact: ${artifactPath}`,
 			"Use bounded file reads only when details are needed.",
 		].join("\n"));
 		assert.doesNotMatch(receipt, /private child output/);

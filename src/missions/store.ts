@@ -147,7 +147,8 @@ function withMissionRecordLock<T>(filePath: string, operation: () => T): T {
 			fs.rmSync(claimPath, { recursive: true, force: true });
 			owner = undefined;
 			const code = (error as NodeJS.ErrnoException).code;
-			if (code !== "EEXIST" && code !== "ENOTEMPTY") throw error;
+			const lockCollision = code === "EEXIST" || code === "ENOTEMPTY" || (code === "EPERM" && fs.existsSync(lockPath));
+			if (!lockCollision) throw error;
 			if (reclaimStaleMissionLock(lockPath)) continue;
 			const delay = DEFAULT_FILE_SYSTEM_RETRY_DELAYS_MS[attempt];
 			if (delay === undefined) throw new Error(`Timed out acquiring mission lock '${lockPath}'.`);

@@ -94,7 +94,7 @@ describe("mission store", () => {
 		try {
 			const mission = createMission(test.location, { title: "Concurrent updates", objective: "Keep every artifact", status: "active" });
 			const storeUrl = pathToFileURL(path.resolve("src/missions/store.ts")).href;
-			const loader = path.resolve("test/support/register-loader.mjs");
+			const loader = pathToFileURL(path.resolve("test/support/register-loader.mjs")).href;
 			const workers = Array.from({ length: 8 }, (_, index) => new Promise<void>((resolve, reject) => {
 				const script = [
 					`import { updateMission } from ${JSON.stringify(storeUrl)};`,
