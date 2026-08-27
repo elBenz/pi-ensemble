@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
+import { runBenchmarkCase } from "../../src/benchmark/runner.ts";
 import { createMockPi } from "../support/mock-pi.ts";
 
 const tempDirs: string[] = [];
@@ -24,6 +25,16 @@ function run(command: string, args: string[], cwd: string): Promise<{ code: numb
 		child.once("error", reject);
 		child.once("close", (code) => resolve({ code, stdout, stderr }));
 	});
+}
+
+async function runBenchmarkCommand(repo: string, casePath: string, outputDir: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+	if (process.platform !== "win32") return run(process.execPath, [path.join(repo, "benchmark-runner.mjs"), casePath, "--output", outputDir], repo);
+	try {
+		const result = await runBenchmarkCase({ casePath, outputDir });
+		return { code: result.passed ? 0 : 1, stdout: `${result.passed ? "PASS" : "FAIL"} ${result.outputDir}\n`, stderr: "" };
+	} catch (error) {
+		return { code: 2, stdout: "", stderr: error instanceof Error ? error.message : String(error) };
+	}
 }
 
 describe("benchmark runner", () => {
@@ -71,12 +82,7 @@ describe("benchmark runner", () => {
 		});
 
 		const repo = path.resolve(import.meta.dirname, "../..");
-		const completed = await run(process.execPath, [
-			path.join(repo, "benchmark-runner.mjs"),
-			casePath,
-			"--output",
-			outputDir,
-		], repo);
+		const completed = await runBenchmarkCommand(repo, casePath, outputDir);
 		assert.equal(completed.code, 0, completed.stderr);
 		assert.match(completed.stdout, /PASS/);
 		assert.equal(mock.callCount(), 1);
@@ -139,7 +145,7 @@ describe("benchmark runner", () => {
 			output: "Directory created.",
 		});
 		const repo = path.resolve(import.meta.dirname, "../..");
-		const completed = await run(process.execPath, [path.join(repo, "benchmark-runner.mjs"), casePath, "--output", outputDir], repo);
+		const completed = await runBenchmarkCommand(repo, casePath, outputDir);
 		assert.equal(completed.code, 0, completed.stderr);
 		const result = JSON.parse(fs.readFileSync(path.join(outputDir, "result.json"), "utf-8"));
 		assert.deepEqual(result.mutation.changedFiles, ["created-empty"]);
