@@ -78,9 +78,13 @@ npm run benchmark -- ./benchmarks/scout-case.json --output ./benchmark-results/s
 }
 ```
 
-`fixture` resolves relative to the case file. Mutation policy accepts `forbid`, `allow`, or `require`. Evaluators run only after candidate exit; expectations never enter candidate prompt or workspace. Each run creates fresh workspace/session plus read-only `receipt.json`, derived `result.json`, and `report.md`. Set `PI_SUBAGENT_PI_BINARY` to substitute a Pi-compatible process shim.
+`fixture` resolves relative to the case file. To replay history instead, replace it with `"source": { "repository": "../..", "revision": "<full commit hash>" }`; repository paths also resolve relative to the case. The runner exports only that commit's tracked tree, without Git metadata, into a unique temporary candidate directory. Candidate support files stay beside that tree; parent session/npm path variables and source-root `PATH` entries are removed. It evaluates there, records the resolved commit and file hashes, then removes the tree in `finally`, including failed runs. `fixture` and `source` are mutually exclusive.
 
-For host-side validation, use `evaluator.kind: "command"` with `command`, optional `args`, `expectations`, and `timeoutMs`. `{input}` and `{workspace}` argument values resolve after candidate exit; the same paths are exposed as `PI_BENCHMARK_EVALUATOR_INPUT` and `PI_BENCHMARK_WORKSPACE`. Evaluator input JSON contains `candidateOutput`, `workspace`, and `expectations`. Commands are trusted case configuration and run with operator permissions.
+Mutation policy accepts `forbid`, `allow`, or `require`. Evaluators run only after candidate exit; expectations never enter candidate prompt or workspace. Each run creates a fresh session plus read-only `receipt.json`, derived `result.json`, and `report.md`. Fixture workspaces remain as artifacts; historical candidate trees are represented by receipt snapshots and removed. Set `PI_SUBAGENT_PI_BINARY` to substitute a Pi-compatible process shim.
+
+For host-side validation, use `evaluator.kind: "command"` with `command`, optional `args`, `expectations`, and `timeoutMs`. `{input}`, `{workspace}`, and `{caseDir}` tokens resolve after candidate exit; the same input and workspace paths are exposed as `PI_BENCHMARK_EVALUATOR_INPUT` and `PI_BENCHMARK_WORKSPACE`. Evaluator input JSON contains `candidateOutput`, `workspace`, and `expectations`. Commands are trusted case configuration and run with operator permissions.
+
+A complete historical case lives at `benchmarks/historical-mission-lock/case.json`. It replays the source immediately before the later fix; its host-only evaluator preserves known lock-collision behavior and adds an unseen Windows edge case.
 
 ### Replacing `pi-subagents`
 
