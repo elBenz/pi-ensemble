@@ -1,9 +1,11 @@
 #!/usr/bin/env node
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { runBenchmarkCase } from "./runner.ts";
+import { runBenchmarkPlan } from "./suite.ts";
 
 function usage(): string {
-	return "Usage: pi-ensemble-benchmark <case.json> [--output <directory>]";
+	return "Usage: pi-ensemble-benchmark <case-or-plan.json> [--output <directory>]";
 }
 
 function parseArgs(args: string[]): { casePath: string; outputDir: string } {
@@ -21,7 +23,10 @@ function parseArgs(args: string[]): { casePath: string; outputDir: string } {
 
 try {
 	const options = parseArgs(process.argv.slice(2));
-	const result = await runBenchmarkCase(options);
+	const input = JSON.parse(fs.readFileSync(path.resolve(options.casePath), "utf-8")) as Record<string, unknown>;
+	const result = Array.isArray(input.launches)
+		? await runBenchmarkPlan({ planPath: options.casePath, outputDir: options.outputDir, onWarning: (warning) => process.stderr.write(`WARNING: ${warning}\n`) })
+		: await runBenchmarkCase(options);
 	process.stdout.write(`${result.passed ? "PASS" : "FAIL"} ${result.outputDir}\n`);
 	process.exitCode = result.passed ? 0 : 1;
 } catch (error) {

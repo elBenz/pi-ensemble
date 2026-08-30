@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPiSpawnCommand } from "../runs/shared/pi-spawn.ts";
 import { THINKING_LEVELS } from "../shared/model-info.ts";
+import { calculateBenchmarkCost, type BenchmarkCost, type BenchmarkPricing } from "./policy.ts";
 import { BENCHMARK_TELEMETRY_PATH_ENV } from "./telemetry-extension.ts";
 
 export type MutationPolicy = "forbid" | "allow" | "require";
@@ -29,6 +30,7 @@ export interface BenchmarkCase {
 	id: string;
 	agentRole: string;
 	route: BenchmarkRoute;
+	currentPricing?: BenchmarkPricing;
 	prompt: string;
 	fixture?: string;
 	source?: BenchmarkSource;
@@ -58,10 +60,11 @@ interface EvaluationResult {
 interface TranscriptMetrics {
 	cumulativeInputTokens: number;
 	cumulativeOutputTokens: number;
+	reasoningTokens: number;
 	cacheReadTokens: number;
 	cacheWriteTokens: number;
 	peakContextLoad: number;
-	reportedCost: number;
+	reportedCost: number | null;
 	turns: number;
 	resolvedModel?: string;
 	candidateOutput: string;
@@ -88,6 +91,29 @@ const TELEMETRY_EXTENSION_PATH = path.join(BENCHMARK_DIR, "telemetry-extension.t
 function requiredString(value: unknown, field: string): string {
 	if (typeof value !== "string" || !value.trim()) throw new Error(`${field} must be a non-empty string.`);
 	return value;
+}
+
+function nonNegativeNumber(value: unknown, field: string): number {
+	if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw new Error(`${field} must be a non-negative finite number.`);
+	return value;
+}
+
+function parsePricing(value: unknown): BenchmarkPricing | undefined {
+	if (value === undefined) return undefined;
+	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("currentPricing must be an object.");
+	const pricing = value as Record<string, unknown>;
+	if (pricing.currency !== "USD") throw new Error("currentPricing.currency must be USD.");
+	if (pricing.unit !== "per-million-tokens") throw new Error("currentPricing.unit must be per-million-tokens.");
+	return {
+		currency: "USD",
+		unit: "per-million-tokens",
+		effectiveAt: requiredString(pricing.effectiveAt, "currentPricing.effectiveAt"),
+		source: requiredString(pricing.source, "currentPricing.source"),
+		input: nonNegativeNumber(pricing.input, "currentPricing.input"),
+		output: nonNegativeNumber(pricing.output, "currentPricing.output"),
+		cacheRead: nonNegativeNumber(pricing.cacheRead, "currentPricing.cacheRead"),
+		cacheWrite: nonNegativeNumber(pricing.cacheWrite, "currentPricing.cacheWrite"),
+	};
 }
 
 export function parseBenchmarkCase(value: unknown): BenchmarkCase {
@@ -142,6 +168,7 @@ export function parseBenchmarkCase(value: unknown): BenchmarkCase {
 			model: requiredString(routeRecord.model, "route.model"),
 			thinkingLevel,
 		},
+		...(input.currentPricing === undefined ? {} : { currentPricing: parsePricing(input.currentPricing) }),
 		prompt: requiredString(input.prompt, "prompt"),
 		...(input.fixture === undefined ? {} : { fixture: requiredString(input.fixture, "fixture") }),
 		...(source ? { source } : {}),
@@ -252,7 +279,7 @@ function changedFiles(before: Record<string, string>, after: Record<string, stri
 }
 
 function parseTranscript(stdout: string): TranscriptMetrics {
-	const metrics: TranscriptMetrics = { cumulativeInputTokens: 0, cumulativeOutputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, peakContextLoad: 0, reportedCost: 0, turns: 0, candidateOutput: "" };
+	const metrics: TranscriptMetrics = { cumulativeInputTokens: 0, cumulativeOutputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, peakContextLoad: 0, reportedCost: null, turns: 0, candidateOutput: "" };
 	for (const line of stdout.split(/\r?\n/)) {
 		if (!line.trim()) continue;
 		let event: unknown;
@@ -271,10 +298,12 @@ function parseTranscript(stdout: string): TranscriptMetrics {
 		const usage = message.usage && typeof message.usage === "object" ? message.usage as Record<string, unknown> : {};
 		const input = typeof usage.input === "number" ? usage.input : 0;
 		const output = typeof usage.output === "number" ? usage.output : 0;
+		const reasoning = typeof usage.reasoning === "number" ? usage.reasoning : 0;
 		const cacheRead = typeof usage.cacheRead === "number" ? usage.cacheRead : 0;
 		const cacheWrite = typeof usage.cacheWrite === "number" ? usage.cacheWrite : 0;
 		metrics.cumulativeInputTokens += input;
 		metrics.cumulativeOutputTokens += output;
+		metrics.reasoningTokens += reasoning;
 		metrics.cacheReadTokens += cacheRead;
 		metrics.cacheWriteTokens += cacheWrite;
 		const totalTokens = typeof usage.totalTokens === "number" && Number.isFinite(usage.totalTokens)
@@ -282,7 +311,7 @@ function parseTranscript(stdout: string): TranscriptMetrics {
 			: input + output + cacheRead + cacheWrite;
 		metrics.peakContextLoad = Math.max(metrics.peakContextLoad, totalTokens);
 		const cost = usage.cost && typeof usage.cost === "object" ? (usage.cost as Record<string, unknown>).total : undefined;
-		if (typeof cost === "number" && Number.isFinite(cost)) metrics.reportedCost += cost;
+		if (typeof cost === "number" && Number.isFinite(cost)) metrics.reportedCost = (metrics.reportedCost ?? 0) + cost;
 	}
 	return metrics;
 }
@@ -334,7 +363,8 @@ function writeImmutableJson(filePath: string, value: object): void {
 function reportMarkdown(benchmarkCase: BenchmarkCase, result: Record<string, unknown>): string {
 	const metrics = result.metrics as TranscriptMetrics;
 	const evaluation = result.evaluation as EvaluationResult;
-	return `# Benchmark: ${benchmarkCase.id}\n\n**${result.passed ? "PASS" : "FAIL"}**\n\n- Agent role: ${benchmarkCase.agentRole}\n- Route: ${benchmarkCase.route.modelTier} (${benchmarkCase.route.model}; Thinking level ${benchmarkCase.route.thinkingLevel})\n- Evaluator: ${evaluation.kind} — ${evaluation.passed ? "passed" : "failed"}\n- Mutation policy: ${benchmarkCase.mutationPolicy}\n- Cumulative output tokens: ${metrics.cumulativeOutputTokens}\n- Peak context load: ${metrics.peakContextLoad}\n- Provider-reported cost: $${metrics.reportedCost.toFixed(6)}\n\n## Evaluation\n\n${evaluation.evidence}\n`;
+	const benchmarkCost = result.benchmarkCost as BenchmarkCost | null;
+	return `# Benchmark: ${benchmarkCase.id}\n\n**${result.passed ? "PASS" : "FAIL"}**\n\n- Agent role: ${benchmarkCase.agentRole}\n- Route: ${benchmarkCase.route.modelTier} (${benchmarkCase.route.model}; Thinking level ${benchmarkCase.route.thinkingLevel})\n- Evaluator: ${evaluation.kind} — ${evaluation.passed ? "passed" : "failed"}\n- Mutation policy: ${benchmarkCase.mutationPolicy}\n- Cumulative output tokens: ${metrics.cumulativeOutputTokens}\n- Reasoning tokens: ${metrics.reasoningTokens}\n- Peak context load: ${metrics.peakContextLoad}\n- Tail breach: ${metrics.peakContextLoad > 150_000 ? "yes" : "no"}\n- Current Benchmark cost: ${benchmarkCost ? `$${benchmarkCost.amount.toFixed(6)}` : "unavailable (no current-price metadata)"}\n- Recorded historical cost: ${metrics.reportedCost === null ? "unavailable" : `$${metrics.reportedCost.toFixed(6)}`}\n\n## Evaluation\n\n${evaluation.evidence}\n`;
 }
 
 export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<BenchmarkRunResult> {
@@ -404,8 +434,15 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 		writeImmutableJson(receiptPath, receipt);
 		const evaluation = await evaluate(benchmarkCase.evaluator, metrics.candidateOutput, workspace, outputDir, caseDir, env);
 		const passed = candidate.exitCode === 0 && !candidate.timedOut && mutationPassed && resolved.complete && evaluation.passed;
+		const benchmarkCost = benchmarkCase.currentPricing ? calculateBenchmarkCost({
+			input: metrics.cumulativeInputTokens,
+			output: metrics.cumulativeOutputTokens,
+			reasoning: metrics.reasoningTokens,
+			cacheRead: metrics.cacheReadTokens,
+			cacheWrite: metrics.cacheWriteTokens,
+		}, benchmarkCase.currentPricing) : null;
 		const result = {
-			schemaVersion: 1,
+			schemaVersion: 2,
 			caseId: benchmarkCase.id,
 			agentRole: benchmarkCase.agentRole,
 			route: benchmarkCase.route,
@@ -415,6 +452,9 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 			mutation: { policy: benchmarkCase.mutationPolicy, passed: mutationPassed, changedFiles: mutations },
 			evaluation,
 			metrics,
+			benchmarkCost,
+			recordedHistoricalCost: { amount: metrics.reportedCost, source: "provider-reported usage.cost.total" },
+			contextPolicy: { tailBreach: metrics.peakContextLoad > 150_000 },
 			resolved,
 		};
 		const resultPath = path.join(outputDir, "result.json");

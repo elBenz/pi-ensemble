@@ -70,6 +70,16 @@ npm run benchmark -- ./benchmarks/scout-case.json --output ./benchmark-results/s
     "model": "openai-codex/gpt-5.6-luna",
     "thinkingLevel": "medium"
   },
+  "currentPricing": {
+    "currency": "USD",
+    "unit": "per-million-tokens",
+    "effectiveAt": "2026-08-27",
+    "source": "https://example.com/provider-pricing",
+    "input": 0,
+    "output": 0,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
   "prompt": "Find the relevant file and report its contents.",
   "fixture": "./fixtures/scout-synthetic",
   "evaluator": { "kind": "output-includes", "expected": "known result" },
@@ -80,7 +90,21 @@ npm run benchmark -- ./benchmarks/scout-case.json --output ./benchmark-results/s
 
 `fixture` resolves relative to the case file. To replay history instead, replace it with `"source": { "repository": "../..", "revision": "<full commit hash>" }`; repository paths also resolve relative to the case. The runner exports only that commit's tracked tree, without Git metadata, into a unique temporary candidate directory. Candidate support files stay beside that tree; parent session/npm path variables and source-root `PATH` entries are removed. It evaluates there, records the resolved commit and file hashes, then removes the tree in `finally`, including failed runs. `fixture` and `source` are mutually exclusive.
 
-Mutation policy accepts `forbid`, `allow`, or `require`. Evaluators run only after candidate exit; expectations never enter candidate prompt or workspace. Each run creates a fresh session plus read-only `receipt.json`, derived `result.json`, and `report.md`. Fixture workspaces remain as artifacts; historical candidate trees are represented by receipt snapshots and removed. Set `PI_SUBAGENT_PI_BINARY` to substitute a Pi-compatible process shim.
+Mutation policy accepts `forbid`, `allow`, or `require`. `currentPricing` records USD per-million-token rates and provenance. Derived Benchmark cost uses reported input, output, cache-read, and cache-write usage; reported historical provider cost remains separate. Reasoning usage is retained but not charged twice when included in output usage.
+
+Evaluators run only after candidate exit; expectations never enter candidate prompt or workspace. Each run creates a fresh session plus read-only `receipt.json`, derived `result.json`, and `report.md`. Fixture workspaces remain as artifacts; historical candidate trees are represented by receipt snapshots and removed. Set `PI_SUBAGENT_PI_BINARY` to substitute a Pi-compatible process shim.
+
+Run comparable repetitions and enforce cumulative spend with a plan:
+
+```json
+{
+  "id": "worker-screening",
+  "stage": "screening",
+  "launches": [{ "case": "./worker-case.json", "repetitions": 3 }]
+}
+```
+
+Pass plan JSON to the same command. Keep the complete stage in one plan: exactly three completed runs per screening Route or nine per finalist Route. Plans require `currentPricing` on every case. Screening warns at $15 and blocks new launches at $25; finalist plans warn at $30 cumulative and block new launches at $50. Checks occur between sequential launches, so active mutation-capable runs always finish. Plan results report median Peak context load per Route, mark medians above 100k ineligible, count runs above 150k as Tail breaches, and reject a nine-run finalist Route with more than one breach. Completed run receipts remain available after hard stop.
 
 For host-side validation, use `evaluator.kind: "command"` with `command`, optional `args`, `expectations`, and `timeoutMs`. `{input}`, `{workspace}`, and `{caseDir}` tokens resolve after candidate exit; the same input and workspace paths are exposed as `PI_BENCHMARK_EVALUATOR_INPUT` and `PI_BENCHMARK_WORKSPACE`. Evaluator input JSON contains `candidateOutput`, `workspace`, and `expectations`. Commands are trusted case configuration and run with operator permissions.
 

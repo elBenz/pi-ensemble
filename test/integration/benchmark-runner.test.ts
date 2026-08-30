@@ -60,6 +60,7 @@ describe("benchmark runner", () => {
 				model: "openai-codex/gpt-5.6-luna",
 				thinkingLevel: "medium",
 			},
+			currentPricing: { currency: "USD", unit: "per-million-tokens", effectiveAt: "2026-08-27", source: "https://example.invalid/pricing", input: 1, output: 2, cacheRead: 0.5, cacheWrite: 3 },
 			prompt: "Find the relevant file and report its contents.",
 			fixture: "fixture",
 			evaluator: { kind: "output-includes", expected: "needle-known-only-to-evaluator" },
@@ -75,16 +76,28 @@ describe("benchmark runner", () => {
 				{ type: "model_change", provider: "openai-codex", modelId: "gpt-5.6-luna" },
 				{ type: "thinking_level_change", thinkingLevel: "medium" },
 			],
-			jsonl: [{
-				type: "message_end",
-				message: {
-					role: "assistant",
-					content: [{ type: "text", text: "Found needle-known-only-to-evaluator" }],
-					model: "openai-codex/gpt-5.6-luna",
-					stopReason: "stop",
-					usage: { input: 120, output: 30, cacheRead: 10, cacheWrite: 0, totalTokens: 155, cost: { total: 0.004 } },
+			jsonl: [
+				{
+					type: "message_end",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "Searching." }],
+						model: "openai-codex/gpt-5.6-luna",
+						stopReason: "toolUse",
+						usage: { input: 120, output: 30, reasoning: 25, cacheRead: 10, cacheWrite: 0, totalTokens: 155, cost: { total: 0.004 } },
+					},
 				},
-			}],
+				{
+					type: "message_end",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "Found needle-known-only-to-evaluator" }],
+						model: "openai-codex/gpt-5.6-luna",
+						stopReason: "stop",
+						usage: { input: 50, output: 5, reasoning: 3, cacheRead: 20, cacheWrite: 0, totalTokens: 150, cost: { total: 0.002 } },
+					},
+				},
+			],
 		});
 
 		const repo = path.resolve(import.meta.dirname, "../..");
@@ -117,10 +130,18 @@ describe("benchmark runner", () => {
 		assert.equal(receipt.session.fresh, true);
 		assert.equal("evaluation" in receipt, false);
 		assert.equal(result.passed, true);
-		assert.equal(result.metrics.cumulativeOutputTokens, 30);
-		assert.equal(result.metrics.peakContextLoad, 155);
+		assert.equal(result.metrics.cumulativeInputTokens, 170);
+		assert.equal(result.metrics.cumulativeOutputTokens, 35);
+		assert.equal(result.metrics.reasoningTokens, 28);
+		assert.equal(result.metrics.cacheReadTokens, 30);
+		assert.equal(result.metrics.peakContextLoad, 155, "Peak context must be maximum per-turn total, not cumulative usage");
+		assert.equal(result.metrics.reportedCost, 0.006);
+		assert.equal(result.benchmarkCost.amount, 0.000255);
+		assert.equal(result.benchmarkCost.pricing.source, "https://example.invalid/pricing");
 		assert.equal(result.evaluation.passed, true);
-		assert.match(fs.readFileSync(reportPath, "utf-8"), /# Benchmark: scout-synthetic[\s\S]*PASS[\s\S]*GPT-5\.6 Luna/);
+		const report = fs.readFileSync(reportPath, "utf-8");
+		assert.match(report, /# Benchmark: scout-synthetic[\s\S]*PASS[\s\S]*GPT-5\.6 Luna/);
+		assert.match(report, /Current Benchmark cost: \$0\.000255[\s\S]*Recorded historical cost: \$0\.006000/);
 		if (process.platform !== "win32") assert.equal(fs.statSync(receiptPath).mode & 0o222, 0);
 	});
 
@@ -236,7 +257,7 @@ describe("benchmark runner", () => {
 				{ type: "model_change", provider: "openai-codex", modelId: "gpt-5.6-terra" },
 				{ type: "thinking_level_change", thinkingLevel: "high" },
 			],
-			output: "Directory created.",
+			jsonl: [{ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Directory created." }], model: "openai-codex/gpt-5.6-terra", usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 } } }],
 		});
 		const repo = path.resolve(import.meta.dirname, "../..");
 		const completed = await runBenchmarkCommand(repo, casePath, outputDir);
@@ -245,6 +266,8 @@ describe("benchmark runner", () => {
 		assert.deepEqual(result.mutation.changedFiles, ["created-empty"]);
 		assert.equal(result.mutation.passed, true);
 		assert.equal(result.evaluation.passed, true);
+		assert.equal(result.recordedHistoricalCost.amount, null, "missing provider cost must remain unavailable");
+		assert.match(fs.readFileSync(path.join(outputDir, "report.md"), "utf-8"), /Recorded historical cost: unavailable/);
 		assert.match(result.evaluation.evidence, /hidden checks passed/);
 		const callName = fs.readdirSync(mock.dir).find((name) => name.startsWith("call-"));
 		assert.ok(callName);
