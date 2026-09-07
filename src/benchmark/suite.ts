@@ -124,6 +124,7 @@ export async function runBenchmarkPlan(options: RunBenchmarkPlanOptions): Promis
 		const context = summarizeRouteContext(knownPeaks, plan.stage);
 		const expectedRuns = plan.stage === "screening" ? 3 : 9;
 		return { agentRole: first.agentRole, ...route, runs: runs.length, expectedRuns, complete: runs.length === expectedRuns, ...context,
+			tailBreaches: runs.filter((run) => (run.contextPolicy as { tailBreach: boolean | null }).tailBreach === true).length,
 			contextComplete,
 			...(contextComplete ? {} : { typicalPeakContextLoad: null, eligible: false, finalistAccepted: null }),
 		};

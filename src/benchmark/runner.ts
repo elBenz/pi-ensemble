@@ -67,6 +67,8 @@ interface TranscriptMetrics {
 	/** Unsupported by the inspected Pi adapter; never inferred from reasoning tokens. */
 	computeUnits: null;
 	peakContextLoad: number | null;
+	/** Positive evidence survives an unknown exact peak. */
+	observedTailBreach: boolean;
 	contextIssues: string[];
 	reportedCost: number | null;
 	turns: number;
@@ -325,7 +327,7 @@ function repriceTranscript(metrics: TranscriptMetrics, pricing?: BenchmarkPricin
 }
 
 function parseTranscript(stdout: string): TranscriptMetrics {
-	const metrics: TranscriptMetrics = { cumulativeInputTokens: 0, cumulativeOutputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, usageIssues: [], computeUnits: null, peakContextLoad: 0, contextIssues: [], reportedCost: 0, turns: 0, candidateOutput: "" };
+	const metrics: TranscriptMetrics = { cumulativeInputTokens: 0, cumulativeOutputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, usageIssues: [], computeUnits: null, peakContextLoad: 0, observedTailBreach: false, contextIssues: [], reportedCost: 0, turns: 0, candidateOutput: "" };
 	let unfinishedTurn = false;
 	for (const line of stdout.split(/\r?\n/)) {
 		if (!line.trim()) continue;
@@ -373,6 +375,7 @@ function parseTranscript(stdout: string): TranscriptMetrics {
 		const totalTokens = usage.totalTokens === undefined
 			? sumUsage(sumUsage(input, output), sumUsage(cacheRead, cacheWrite))
 			: typeof usage.totalTokens === "number" && Number.isFinite(usage.totalTokens) && usage.totalTokens >= 0 ? usage.totalTokens : null;
+		if (totalTokens !== null && totalTokens > 150_000) metrics.observedTailBreach = true;
 		if (totalTokens === null) metrics.contextIssues.push(`Turn ${metrics.turns}: per-turn total tokens unavailable.`);
 		metrics.peakContextLoad = metrics.peakContextLoad === null || totalTokens === null ? null : Math.max(metrics.peakContextLoad, totalTokens);
 		const cost = usage.cost && typeof usage.cost === "object" ? (usage.cost as Record<string, unknown>).total : undefined;
@@ -434,7 +437,8 @@ function reportMarkdown(benchmarkCase: BenchmarkCase, result: Record<string, unk
 	const metrics = result.metrics as TranscriptMetrics;
 	const evaluation = result.evaluation as EvaluationResult;
 	const benchmarkCost = result.benchmarkCost as BenchmarkCost | null;
-	return `# Benchmark: ${benchmarkCase.id}\n\n**${result.passed ? "PASS" : "FAIL"}**\n\n- Agent role: ${benchmarkCase.agentRole}\n- Route: ${benchmarkCase.route.modelTier} (${benchmarkCase.route.model}; Thinking level ${benchmarkCase.route.thinkingLevel})\n- Evaluator: ${evaluation.kind} — ${evaluation.passed ? "passed" : "failed"}\n- Mutation policy: ${benchmarkCase.mutationPolicy}\n- Cumulative output tokens: ${metrics.cumulativeOutputTokens ?? "unknown"}\n- Reasoning tokens: ${metrics.reasoningTokens ?? "unknown"}\n- Peak context load: ${metrics.peakContextLoad ?? "unknown"}\n- Tail breach: ${metrics.peakContextLoad === null ? "unknown" : metrics.peakContextLoad > 150_000 ? "yes" : "no"}\n- Current Benchmark cost: ${benchmarkCost ? `$${benchmarkCost.amount.toFixed(6)}` : `unavailable (${result.benchmarkCostUnavailableReason})`}\n- Recorded historical cost: ${metrics.reportedCost === null ? "unavailable" : `$${metrics.reportedCost.toFixed(6)}`}\n\n## Evaluation\n\n${evaluation.evidence}\n`;
+	const { tailBreach } = result.contextPolicy as { tailBreach: boolean | null };
+	return `# Benchmark: ${benchmarkCase.id}\n\n**${result.passed ? "PASS" : "FAIL"}**\n\n- Agent role: ${benchmarkCase.agentRole}\n- Route: ${benchmarkCase.route.modelTier} (${benchmarkCase.route.model}; Thinking level ${benchmarkCase.route.thinkingLevel})\n- Evaluator: ${evaluation.kind} — ${evaluation.passed ? "passed" : "failed"}\n- Mutation policy: ${benchmarkCase.mutationPolicy}\n- Cumulative output tokens: ${metrics.cumulativeOutputTokens ?? "unknown"}\n- Reasoning tokens: ${metrics.reasoningTokens ?? "unknown"}\n- Peak context load: ${metrics.peakContextLoad ?? "unknown"}\n- Tail breach: ${tailBreach === null ? "unknown" : tailBreach ? "yes" : "no"}\n- Current Benchmark cost: ${benchmarkCost ? `$${benchmarkCost.amount.toFixed(6)}` : `unavailable (${result.benchmarkCostUnavailableReason})`}\n- Recorded historical cost: ${metrics.reportedCost === null ? "unavailable" : `$${metrics.reportedCost.toFixed(6)}`}\n\n## Evaluation\n\n${evaluation.evidence}\n`;
 }
 
 export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<BenchmarkRunResult> {
@@ -528,7 +532,7 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 			metrics,
 			...cost,
 			recordedHistoricalCost: { amount: metrics.reportedCost, source: "provider-reported usage.cost.total" },
-			contextPolicy: { tailBreach: metrics.peakContextLoad === null ? null : metrics.peakContextLoad > 150_000 },
+			contextPolicy: { tailBreach: metrics.observedTailBreach ? true : metrics.peakContextLoad === null ? null : false },
 			resolved,
 		};
 		const resultPath = path.join(outputDir, "result.json");

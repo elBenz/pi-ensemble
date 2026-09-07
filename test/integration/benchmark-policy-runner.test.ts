@@ -163,6 +163,31 @@ describe("benchmark plan policy", () => {
 		assert.match(fs.readFileSync(path.join(root, "results", "run-001", "report.md"), "utf-8"), /Tail breach: unknown/);
 	});
 
+	it("counts a proven Tail breach when the same run has incomplete context", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-benchmark-partial-breach-"));
+		tempDirs.push(root);
+		writeCase(root);
+		const planPath = path.join(root, "plan.json");
+		fs.writeFileSync(planPath, JSON.stringify({ id: "partial-breach", stage: "screening", launches: [{ case: "case.json", repetitions: 3 }] }));
+		const mock = createMockPi();
+		mocks.push(mock);
+		mock.install();
+		const partial = response(160_000);
+		partial.jsonl.push(response(-1).jsonl[0]!);
+		mock.onCall(partial);
+		mock.onCall(response(80_000));
+		mock.onCall(response(90_000));
+
+		const completed = await runBenchmarkPlan({ planPath, outputDir: path.join(root, "results") });
+		const result = JSON.parse(fs.readFileSync(completed.resultPath, "utf-8"));
+		assert.equal(result.routes[0].tailBreaches, 1);
+		assert.equal(result.routes[0].contextComplete, false);
+		assert.equal(result.routes[0].typicalPeakContextLoad, null);
+		assert.equal(result.routes[0].eligible, false);
+		assert.equal(completed.passed, false);
+		assert.match(fs.readFileSync(completed.reportPath, "utf-8"), /1 Tail breach\(es\)/);
+	});
+
 	it("blocks the next screening launch at the $25 boundary", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-benchmark-plan-hard-boundary-"));
 		tempDirs.push(root);

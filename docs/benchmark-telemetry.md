@@ -9,7 +9,7 @@ The public `runBenchmarkCase` / `runBenchmarkPlan` seam consumes Pi terminal ass
 - Missing, negative, non-numeric, non-finite or overflowing required token totals cannot become a zero-priced run. Explicit reported zeros remain valid at this boundary.
 - Missing optional reasoning remains null and is omitted from priced usage. Reasoning included in output is never charged twice.
 - Missing any turn's historical cost makes the run's historical total null. It is not substituted for current repricing.
-- Peak context is maximum per-turn `totalTokens`. If that field is absent, a complete finite sum of that turn's input/output/cache categories is allowed; malformed reported totals are not repaired from other fields. Incomplete peak context produces unknown eligibility, not zero. Known Tail breaches remain visible when another run's context is missing.
+- Peak context is maximum per-turn `totalTokens`. If that field is absent, a complete finite sum of that turn's input/output/cache categories is allowed; malformed reported totals are not repaired from other fields. Incomplete peak context produces unknown eligibility, not zero. Known Tail breaches remain visible when another turn's or run's context is missing, including unfinished trailing turns. `metrics.observedTailBreach` retains positive evidence independently of the nullable exact peak; `contextPolicy.tailBreach` supplies Markdown and plan breach counts.
 - Error/aborted responses, unfinished turns, malformed JSONL, and compaction events make current repricing unavailable. Summary-model usage outside terminal assistant telemetry must not be silently ignored.
 - A plan retains the completed run, evaluation, mutations and receipts, then blocks queued launches on unavailable cost. Known spend is a labeled subtotal of fully repriced runs; complete cumulative spend is null. Unknown cost on the final launch still fails the plan, even with no queued work to block.
 - Existing inclusive screening $15 warning/$25 stop, finalist $30/$50 limits, 100k typical target and 150k Tail breach threshold are unchanged. No spend-only interruption is added.
@@ -56,6 +56,12 @@ All entries are qualified `openai-codex` IDs. The resolver preserves thinking su
 2. **Upstream omission erasure.** This implementation distinguishes missing fields in Pi JSON, but cannot reconstruct provider omissions already normalized to zero by Pi. A faithful provider-usage/provenance signal or approved transport integration is required before claiming provider-level completeness. Do not infer full Astra pricing from token-only metadata or reasoning tokens.
 3. **Campaign approval.** Recheck the actual runtime, active model registry, effort resolution, fallback availability and pricing basis with fixed prompt/tool configuration. Obtain explicit run/spend authorization. Screening remains three comparable repetitions per approved candidate; finalists remain nine runs under existing context/tail and cumulative spend gates. Prompt-guidance experiments stay separate.
 
+## Remediation boundary
+
+Terminal review of `bf6911b` found that a known >150k turn followed by missing or unfinished context lost its Tail breach: the nullable exact peak was also the sole breach evidence. Remediation preserves observed breach evidence in either terminal-turn order and counts that run in plan totals without restoring eligibility. Rendering consumes the normalized decision instead of repeating the threshold policy.
+
+Compute capture and provider omission provenance remain unmet acceptance. No runtime readiness toggle was added: current terminal JSON cannot distinguish a faithful reported zero from an adapter default, so a caller assertion or model-name gate would not verify completeness. A genuine fix needs a separately approved provider/adapter integration with supported compute and presence evidence, then deterministic charge/provenance fixtures. Explicit compute pricing still fails closed before launch. This remediation does not authorize that integration, paid screening, or global routing changes.
+
 ## Validation
 
 Deterministic tests use fake Pi processes at the existing runner seam. Coverage includes partial multi-turn usage, invalid fields, zero usage, missing reasoning, missing/invalid context, partial historical cost, interrupted/truncated turns, malformed JSONL, uncaptured compaction usage, queued mutation blocking with retained receipts/known spend, and compute preflight with zero launches. No paid benchmark is needed for these tests.
@@ -67,3 +73,10 @@ Delivery checks:
 - Full suites executed once at completion: unit 2119 passed, 3 skipped; integration 690 passed, 1 failed (`fork-context-execution.test.ts:1162`, `uses request cwd for execution-time agent discovery`, actual `true`, expected `undefined`). Same failure was previously reproduced on baseline `d66cb31`, as recorded in `docs/research/deepswe-refresh/implementation-notes.md`; no new baseline run was performed here.
 - E2E command exited 0 but ran zero tests: real Pi-session suite skipped because runtime packages were unavailable to its test gate. This is not live E2E success evidence.
 - `git diff --check`: passed. Full suite is not green.
+
+Remediation checks (starting at `bf6911b`):
+
+- Runner regression failed with `null !== true`; plan regression then failed with `0 !== 1`. Both passed after their respective fixes.
+- Typecheck passed. Focused runner/policy/telemetry integrations: 19 passed; importer/policy units: 11 passed.
+- Full suites executed once: unit 2118 passed, 2 failed, 3 skipped; integration 692 passed, 1 failed. Unit failures: `mission-store` cross-process contention child exited with `ENOTEMPTY` removing a lock directory; `orca-progress-tabs.test.ts` failed during temporary-root cleanup with `ENOTEMPTY`. Neither failure was baseline-verified in this remediation session. Integration retained the previously documented `fork-context-execution.test.ts:1162` assertion failure; no fresh baseline run.
+- E2E exited 0 with zero tests: runtime-package gate skipped the suite. No paid benchmark or live provider validation ran. Full suite remains non-green.

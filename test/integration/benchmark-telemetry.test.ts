@@ -72,6 +72,20 @@ describe("benchmark telemetry completeness", () => {
 		assert.match(receipt.candidate.stdout, /message_update/);
 	});
 
+	it("retains a proven Tail breach despite missing or unfinished context in either turn order", async () => {
+		const breach = message({ ...usage, totalTokens: 160_000 });
+		const missing = message(undefined);
+		const unfinished = { type: "message_start", message: { role: "assistant" } };
+		for (const turns of [[breach, missing], [missing, breach], [breach, unfinished]]) {
+			const { result, report } = await runTurns(turns);
+			assert.equal(result.metrics.peakContextLoad, null);
+			assert.equal(result.telemetry.passed, false);
+			assert.equal(result.contextPolicy.tailBreach, true);
+			assert.match(report, /Peak context load: unknown/);
+			assert.match(report, /Tail breach: yes/);
+		}
+	});
+
 	it("prices explicit zeros without inventing missing reasoning and ignores streaming usage duplicates", async () => {
 		const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } };
 		const { result } = await runTurns([
