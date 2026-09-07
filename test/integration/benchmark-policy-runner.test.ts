@@ -39,7 +39,8 @@ function response(peakContextLoad: number, output = 10) {
 		],
 		jsonl: [{
 			type: "message_end",
-			message: { role: "assistant", content: [{ type: "text", text: "done" }], model: "openai-codex/gpt-5.6-terra", usage: { input: 10, output, reasoning: output - 1, cacheRead: 5, cacheWrite: 0, totalTokens: peakContextLoad, cost: { total: 99 } } },
+			message: { role: "assistant", api: "openai-codex-responses", content: [{ type: "text", text: "done" }], model: "openai-codex/gpt-5.6-terra", usage: { input: 10, output, reasoning: output - 1, cacheRead: 5, cacheWrite: 0, totalTokens: peakContextLoad, cost: { total: 99 } },
+				usageProvenance: { schemaVersion: 1, source: "openai-responses", rawUsage: { input_tokens: 15, output_tokens: output, input_tokens_details: { cached_tokens: 5, cache_write_tokens: 0 }, output_tokens_details: { reasoning_tokens: output - 1 }, total_tokens: peakContextLoad } } },
 		}],
 	};
 }
@@ -107,7 +108,8 @@ describe("benchmark plan policy", () => {
 		mock.install();
 		mock.onCall(response(80_000, 1_000_000));
 		const partial = response(90_000);
-		Reflect.deleteProperty(partial.jsonl[0]!.message.usage, "output");
+		Reflect.deleteProperty(partial.jsonl[0]!.message.usageProvenance.rawUsage, "output_tokens");
+		partial.jsonl[0]!.message.usage.output = 0;
 		mock.onCall(partial);
 
 		const completed = await runBenchmarkPlan({ planPath, outputDir: path.join(root, "results") });
@@ -146,6 +148,7 @@ describe("benchmark plan policy", () => {
 		for (let i = 0; i < 3; i += 1) {
 			const turn = response(0, 0);
 			Object.assign(turn.jsonl[0]!.message.usage, { input: 0, reasoning: 0, cacheRead: 0, totalTokens: -1 });
+			Object.assign(turn.jsonl[0]!.message.usageProvenance.rawUsage, { input_tokens: 0, input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 }, total_tokens: -1 });
 			mock.onCall(turn);
 		}
 		const completed = await runBenchmarkPlan({ planPath, outputDir: path.join(root, "results") });

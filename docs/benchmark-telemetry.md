@@ -2,11 +2,13 @@
 
 Issue: https://github.com/elBenz/pi-ensemble/issues/12
 
+Bounded implementation complete locally; [final acceptance, review and validation evidence](benchmark-acceptance.md). Local commits authorized after completion; changes remain unpublished. Campaign readiness is separate; historical validation below does not supersede the final assessment.
+
 ## Delivered boundary
 
-The public `runBenchmarkCase` / `runBenchmarkPlan` seam consumes Pi terminal assistant usage, not raw provider responses. Raw candidate stdout stays in read-only `receipt.json`; normalized run schema v3 and plan schema v2 carry completeness and unavailable-cost reasons.
+The public `runBenchmarkCase` / `runBenchmarkPlan` seam now requires the patched Pi terminal assistant's raw `usageProvenance` snapshot for token/context accounting. Raw candidate stdout stays in read-only `receipt.json`; normalized run schema v4 and plan schema v2 carry completeness and unavailable-cost reasons. Adapter source patch, exact contract, successful local build/real-CLI offline validation and remaining activation limits: [Responses usage provenance adapter](benchmark-adapter.md). Stock Pi 0.85.1 and other APIs without that contract fail closed; no active runtime was replaced.
 
-- Missing, negative, non-numeric, non-finite or overflowing required token totals cannot become a zero-priced run. Explicit reported zeros remain valid at this boundary.
+- Missing, negative, non-numeric, non-finite or overflowing required token totals cannot become a zero-priced run. Explicit raw provider zeros remain valid at this boundary; adapter-inserted zeros without raw presence evidence do not.
 - Missing optional reasoning remains null and is omitted from priced usage. Reasoning included in output is never charged twice.
 - Missing any turn's historical cost makes the run's historical total null. It is not substituted for current repricing.
 - Peak context is maximum per-turn `totalTokens`. If that field is absent, a complete finite sum of that turn's input/output/cache categories is allowed; malformed reported totals are not repaired from other fields. Incomplete peak context produces unknown eligibility, not zero. Known Tail breaches remain visible when another turn's or run's context is missing, including unfinished trailing turns. `metrics.observedTailBreach` retains positive evidence independently of the nullable exact peak; `contextPolicy.tailBreach` supplies Markdown and plan breach counts.
@@ -50,17 +52,19 @@ Offline `buildModelCandidates` resolution against IDs extracted from the install
 
 All entries are qualified `openai-codex` IDs. The resolver preserves thinking suffixes and does not switch providers for a qualified query. Available-registry/auth filtering and real failure-triggered fallback launches are not established by this static catalog check. Same-provider quota/auth failures can defeat the entire chain. Watchdog selection remains a separate runtime-selection prerequisite, not a proved Sol-high route.
 
-## Remaining blockers: do not close #12 or launch #17
+## Capability limits and #17 launch prerequisites
 
-1. **Compute capture unsupported.** `metrics.computeUnits` is null and `telemetry.computeUnits.status` is `unsupported`; there is no invented `usage.computeUnits` mapping. Actual per-turn compute-charge tests through live Pi cannot be written honestly until a supported adapter field/source exists. The existing offline importer tests exercise known external compute charges, not live telemetry.
-2. **Upstream omission erasure.** This implementation distinguishes missing fields in Pi JSON, but cannot reconstruct provider omissions already normalized to zero by Pi. A faithful provider-usage/provenance signal or approved transport integration is required before claiming provider-level completeness. Do not infer full Astra pricing from token-only metadata or reasoning tokens.
+1. **Compute capability limited; acceptance reconciled.** `metrics.computeUnits` is null and `telemetry.computeUnits.status` is `unsupported`; there is no invented `usage.computeUnits` mapping. On 2026-09-07 the user approved explicit unsupported handling and preflight rejection instead of requiring capture of an unverified field. #12's two affected completion criteria and related #9/#17 wording were updated. Actual compute capture still requires a documented field, verified adapter mapping and tests. Existing offline importer tests exercise known external compute charges, not live telemetry. See [approved decision](research/compute-acceptance-reconciliation.md).
+2. **Campaign runtime selection/live validation pending.** The approved source patch preserves raw Responses usage before zero normalization, and runner schema v4 consumes it. Authorized checkout-local hydration resolved missing generated model data; full upstream checks and the offline build passed. The actual bundled CLI passed loopback Responses SSE → JSON/session → benchmark-plan validation, selected through `PI_SUBAGENT_PI_BINARY` only inside an isolated test environment. Stock global Pi remains unpatched; no ordinary session or campaign was switched. Codex adapter SSE tests pass, but real Codex CLI/authentication and live provider field reporting remain unverified. Missing raw cache-write fields still block pricing rather than defaulting to zero. Compute acceptance is now reconciled, but this does not establish complete live token/cache reporting; see the adapter document's official-source evidence.
 3. **Campaign approval.** Recheck the actual runtime, active model registry, effort resolution, fallback availability and pricing basis with fixed prompt/tool configuration. Obtain explicit run/spend authorization. Screening remains three comparable repetitions per approved candidate; finalists remain nine runs under existing context/tail and cumulative spend gates. Prompt-guidance experiments stay separate.
 
-## Remediation boundary
+## Historical remediation boundary
 
 Terminal review of `bf6911b` found that a known >150k turn followed by missing or unfinished context lost its Tail breach: the nullable exact peak was also the sole breach evidence. Remediation preserves observed breach evidence in either terminal-turn order and counts that run in plan totals without restoring eligibility. Rendering consumes the normalized decision instead of repeating the threshold policy.
 
 Compute capture and provider omission provenance remain unmet acceptance. No runtime readiness toggle was added: current terminal JSON cannot distinguish a faithful reported zero from an adapter default, so a caller assertion or model-name gate would not verify completeness. A genuine fix needs a separately approved provider/adapter integration with supported compute and presence evidence, then deterministic charge/provenance fixtures. Explicit compute pricing still fails closed before launch. This remediation does not authorize that integration, paid screening, or global routing changes.
+
+The later approved adapter slice supersedes the runner-only provenance boundary above; it does not satisfy compute capture by inventing fields. [Adapter validation](benchmark-adapter.md#validation) records the latest checks, successful local runtime build and remaining live-validation limits. The checks below are historical delivery/remediation results.
 
 ## Validation
 

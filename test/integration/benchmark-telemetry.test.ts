@@ -14,8 +14,10 @@ afterEach(() => {
 });
 
 const usage = { input: 100, output: 20, cacheRead: 10, cacheWrite: 0, totalTokens: 130, cost: { total: 1 } };
-function message(turnUsage: unknown) {
-	return { type: "message_end", message: { role: "assistant", model: "openai-codex/gpt-5.6-luna", content: [{ type: "text", text: "done" }], usage: turnUsage } };
+const rawUsage = { input_tokens: 110, output_tokens: 20, input_tokens_details: { cached_tokens: 10, cache_write_tokens: 0 }, total_tokens: 130 };
+const rawZero = { input_tokens: 0, output_tokens: 0, input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 }, total_tokens: 0 };
+function message(turnUsage: unknown, raw: unknown = rawUsage) {
+	return { type: "message_end", message: { role: "assistant", api: "openai-codex-responses", model: "openai-codex/gpt-5.6-luna", content: [{ type: "text", text: "done" }], usage: turnUsage, usageProvenance: { schemaVersion: 1, source: "openai-responses", rawUsage: raw } } };
 }
 
 async function runTurns(turns: unknown[], stdoutRaw?: string) {
@@ -37,10 +39,51 @@ async function runTurns(turns: unknown[], stdoutRaw?: string) {
 }
 
 describe("benchmark telemetry completeness", () => {
+	it("does not price adapter zeros without raw provider presence evidence", async () => {
+		const turn = message({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } });
+		Reflect.deleteProperty(turn.message, "usageProvenance");
+		const { result, receipt } = await runTurns([turn]);
+		assert.equal(result.benchmarkCost, null);
+		assert.match(result.benchmarkCostUnavailableReason, /provider usage provenance/i);
+		assert.equal(result.metrics.cumulativeInputTokens, null);
+		assert.equal(result.metrics.peakContextLoad, null);
+		assert.equal(result.telemetry.passed, false);
+		assert.match(receipt.candidate.stdout, /"input":0/);
+	});
+
+	it("distinguishes omitted raw fields from reported zeros even after identical adapter normalization", async () => {
+		const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } };
+		for (const rawUsage of [
+			{ input_tokens: 0, output_tokens: 0, input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 }, total_tokens: 0 },
+			{ output_tokens: 0, input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 }, total_tokens: 0 },
+		]) {
+			const turn = message(zero);
+			const { result, receipt } = await runTurns([{ ...turn, message: { ...turn.message, api: "openai-codex-responses", usageProvenance: { schemaVersion: 1, source: "openai-responses", rawUsage } } }]);
+			assert.equal(result.benchmarkCost?.amount ?? null, "input_tokens" in rawUsage ? 0 : null);
+			assert.equal(result.metrics.cumulativeInputTokens, "input_tokens" in rawUsage ? 0 : null);
+			assert.deepEqual(JSON.parse(receipt.candidate.stdout.trim()).message.usageProvenance.rawUsage, rawUsage);
+		}
+	});
+
+	it("prices raw cache categories without double-charging input or reasoning", async () => {
+		const { result } = await runTurns([
+			message(usage, { input_tokens: 120, output_tokens: 10, input_tokens_details: { cached_tokens: 20, cache_write_tokens: 30 }, output_tokens_details: { reasoning_tokens: 7 }, total_tokens: 130 }),
+			message(usage, { input_tokens: 60, output_tokens: 10, input_tokens_details: { cached_tokens: 10, cache_write_tokens: 5 }, output_tokens_details: { reasoning_tokens: 2 } }),
+		]);
+		assert.equal(result.passed, true);
+		assert.equal(result.metrics.cumulativeInputTokens, 115);
+		assert.equal(result.metrics.cumulativeOutputTokens, 20);
+		assert.equal(result.metrics.cacheReadTokens, 30);
+		assert.equal(result.metrics.cacheWriteTokens, 35);
+		assert.equal(result.metrics.reasoningTokens, 9);
+		assert.equal(result.metrics.peakContextLoad, 130, "missing raw total falls back to complete categories, not normalized total");
+		assert.equal(result.benchmarkCost.amount, 0.000275);
+	});
+
 	it("preserves unknown token and historical-cost totals across complete and incomplete turns", async () => {
 		const { result, report } = await runTurns([
 			message(usage),
-			message({ ...usage, input: -1, output: "20", cacheRead: null, cacheWrite: undefined, cost: undefined, totalTokens: undefined }),
+			message({ ...usage, input: 0, output: 20, cacheRead: 0, cacheWrite: 0, cost: undefined, totalTokens: 0 }, { input_tokens: -1, output_tokens: "20", input_tokens_details: { cached_tokens: null } }),
 			message(usage),
 		]);
 		assert.equal(result.benchmarkCost, null);
@@ -50,6 +93,36 @@ describe("benchmark telemetry completeness", () => {
 		assert.equal(result.telemetry.passed, false);
 		assert.match(report, /Reasoning tokens: unknown/);
 		assert.match(report, /Recorded historical cost: unavailable/);
+	});
+
+	it("rejects missing, malformed and inconsistent raw counters rather than repairing adapter defaults", async () => {
+		for (const raw of [
+			null, [], "bad", {},
+			{ ...rawUsage, output_tokens: undefined },
+			{ ...rawUsage, input_tokens_details: { cache_write_tokens: 0 } },
+			{ ...rawUsage, input_tokens_details: { cached_tokens: 0 } },
+			{ ...rawUsage, input_tokens_details: { cached_tokens: -1, cache_write_tokens: 0 } },
+			{ ...rawUsage, input_tokens: 5 },
+			{ ...rawUsage, output_tokens: "20" },
+			{ ...rawUsage, output_tokens: Number.POSITIVE_INFINITY },
+		]) {
+			const { result } = await runTurns([message(usage, raw)]);
+			assert.equal(result.benchmarkCost, null, JSON.stringify(raw));
+			assert.equal(result.telemetry.passed, false);
+		}
+	});
+
+	it("does not accept provenance from an unsupported schema or API", async () => {
+		for (const changes of [
+			{ api: "anthropic-messages" },
+			{ usageProvenance: { schemaVersion: 2, source: "openai-responses", rawUsage } },
+			{ usageProvenance: { schemaVersion: 1, source: "caller-assertion", rawUsage } },
+		]) {
+			const turn = message(usage);
+			const { result } = await runTurns([{ ...turn, message: { ...turn.message, ...changes } }]);
+			assert.equal(result.benchmarkCost, null);
+			assert.match(result.benchmarkCostUnavailableReason, /provider usage provenance/i);
+		}
 	});
 
 	it("does not price interrupted turns from adapter-initialized zeros", async () => {
@@ -73,8 +146,8 @@ describe("benchmark telemetry completeness", () => {
 	});
 
 	it("retains a proven Tail breach despite missing or unfinished context in either turn order", async () => {
-		const breach = message({ ...usage, totalTokens: 160_000 });
-		const missing = message(undefined);
+		const breach = message({ ...usage, totalTokens: 160_000 }, { ...rawUsage, total_tokens: 160_000 });
+		const missing = message(undefined, null);
 		const unfinished = { type: "message_start", message: { role: "assistant" } };
 		for (const turns of [[breach, missing], [missing, breach], [breach, unfinished]]) {
 			const { result, report } = await runTurns(turns);
@@ -91,7 +164,7 @@ describe("benchmark telemetry completeness", () => {
 		const { result } = await runTurns([
 			{ type: "message_start", message: { role: "assistant" } },
 			{ type: "message_update", usage: { input: 900_000, output: 500_000 } },
-			message(zero),
+			message(zero, rawZero),
 		]);
 		assert.equal(result.passed, true);
 		assert.equal(result.metrics.cumulativeInputTokens, 0);
@@ -101,7 +174,7 @@ describe("benchmark telemetry completeness", () => {
 		assert.equal(result.benchmarkCost.amount, 0);
 		assert.equal("reasoning" in result.benchmarkCost.usage, false);
 		assert.equal(result.recordedHistoricalCost.amount, 0);
-		assert.equal(result.telemetry.usageSource, "Pi message_end.message.usage (adapter-normalized)");
+		assert.equal(result.telemetry.usageSource, "Pi message_end.message.usageProvenance.rawUsage (raw Responses usage)");
 		assert.equal(result.telemetry.computeUnits.status, "unsupported");
 		assert.equal(result.metrics.computeUnits, null);
 	});

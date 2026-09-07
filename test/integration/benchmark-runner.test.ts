@@ -84,6 +84,8 @@ describe("benchmark runner", () => {
 						content: [{ type: "text", text: "Searching." }],
 						model: "openai-codex/gpt-5.6-luna",
 						stopReason: "toolUse",
+						api: "openai-codex-responses",
+						usageProvenance: { schemaVersion: 1, source: "openai-responses", rawUsage: { input_tokens: 130, output_tokens: 30, input_tokens_details: { cached_tokens: 10, cache_write_tokens: 0 }, output_tokens_details: { reasoning_tokens: 25 }, total_tokens: 155 } },
 						usage: { input: 120, output: 30, reasoning: 25, cacheRead: 10, cacheWrite: 0, totalTokens: 155, cost: { total: 0.004 } },
 					},
 				},
@@ -94,6 +96,8 @@ describe("benchmark runner", () => {
 						content: [{ type: "text", text: "Found needle-known-only-to-evaluator" }],
 						model: "openai-codex/gpt-5.6-luna",
 						stopReason: "stop",
+						api: "openai-codex-responses",
+						usageProvenance: { schemaVersion: 1, source: "openai-responses", rawUsage: { input_tokens: 70, output_tokens: 5, input_tokens_details: { cached_tokens: 20, cache_write_tokens: 0 }, output_tokens_details: { reasoning_tokens: 3 }, total_tokens: 150 } },
 						usage: { input: 50, output: 5, reasoning: 3, cacheRead: 20, cacheWrite: 0, totalTokens: 150, cost: { total: 0.002 } },
 					},
 				},
@@ -220,7 +224,12 @@ describe("benchmark runner", () => {
 					PATH: `${path.join(sourceRepo, "node_modules", ".bin")}${path.delimiter}${process.env.PATH ?? ""}`,
 				},
 			});
-			assert.equal(result.passed, true);
+			assert.equal(result.passed, false, "legacy fake-Pi telemetry lacks provider provenance");
+			const normalized = JSON.parse(fs.readFileSync(result.resultPath, "utf-8"));
+			assert.equal(normalized.evaluation.passed, true);
+			assert.equal(normalized.execution.passed, true);
+			assert.equal(normalized.mutation.passed, true);
+			assert.equal(normalized.telemetry.passed, false);
 			const receipt = JSON.parse(fs.readFileSync(result.receiptPath, "utf-8"));
 			assert.equal(receipt.source.revision, sourceRevision);
 			assert.equal(receipt.source.resolvedCommit, sourceRevision);
@@ -257,7 +266,7 @@ describe("benchmark runner", () => {
 				{ type: "model_change", provider: "openai-codex", modelId: "gpt-5.6-terra" },
 				{ type: "thinking_level_change", thinkingLevel: "high" },
 			],
-			jsonl: [{ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Directory created." }], model: "openai-codex/gpt-5.6-terra", usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 } } }],
+			jsonl: [{ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Directory created." }], model: "openai-codex/gpt-5.6-terra", api: "openai-codex-responses", usageProvenance: { schemaVersion: 1, source: "openai-responses", rawUsage: { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 }, total_tokens: 15 } }, usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 } } }],
 		});
 		const repo = path.resolve(import.meta.dirname, "../..");
 		const completed = await runBenchmarkCommand(repo, casePath, outputDir);

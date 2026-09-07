@@ -1,0 +1,199 @@
+diff --git a/packages/ai/README.md b/packages/ai/README.md
+index 97bf644..222cc04 100644
+--- a/packages/ai/README.md
++++ b/packages/ai/README.md
+@@ -925,6 +925,8 @@ Every `AssistantMessage` includes a `stopReason` field that indicates how the ge
+ 
+ `AssistantMessage` may also include `responseId`, a provider-specific upstream response or message identifier when the underlying API exposes one. Do not assume it is always present across providers.
+ 
++`AssistantMessage.usageProvenance` optionally preserves provider usage before normalization. OpenAI, Codex, and Azure Responses completed/incomplete finalization sets `{ schemaVersion: 1, source: "openai-responses", rawUsage: unknown }`, even when usage is missing (`rawUsage: null`). The raw value is a detached snapshot: omitted fields, explicit zeros, and malformed values remain distinguishable. Validate it before use; the numeric `usage` contract is unchanged. An absent `usageProvenance` means provenance was not captured, not that the provider reported zero usage.
++
+ ## Error Handling
+ 
+ Request failures after a stream is returned never throw: when a request ends with an error (including aborts and tool call validation errors), the streaming API emits an error event and the final message carries the details. Setup failures may emit `error` without `start`; failures after generation begins emit `start`, any observed updates, then `error`. Direct API `streamSimple()` calls throw synchronously when request auth is missing:
+diff --git a/packages/ai/src/api/openai-responses-shared.ts b/packages/ai/src/api/openai-responses-shared.ts
+index 7ac1add..4c2c1c4 100644
+--- a/packages/ai/src/api/openai-responses-shared.ts
++++ b/packages/ai/src/api/openai-responses-shared.ts
+@@ -552,6 +552,11 @@ export async function processResponsesStream<TApi extends Api>(
+ 		response: Extract<ResponseStreamEvent, { type: "response.completed" | "response.incomplete" }>["response"],
+ 	): void => {
+ 		sawTerminalResponseEvent = true;
++		output.usageProvenance = {
++			schemaVersion: 1,
++			source: "openai-responses",
++			rawUsage: structuredClone(response.usage ?? null),
++		};
+ 		backfillReasoningSignatures(response.output ?? []);
+ 		if (response?.id) {
+ 			output.responseId = response.id;
+diff --git a/packages/ai/src/types.ts b/packages/ai/src/types.ts
+index fe318fe..1d3adaf 100644
+--- a/packages/ai/src/types.ts
++++ b/packages/ai/src/types.ts
+@@ -437,6 +437,8 @@ export interface AssistantMessage {
+ 	providerThinkingLevel?: string;
+ 	diagnostics?: AssistantMessageDiagnostic[]; // Redacted provider/runtime diagnostics for failures and recoveries.
+ 	usage: Usage;
++	/** Detached provider usage before normalization; absent when provenance was not captured. */
++	usageProvenance?: { schemaVersion: 1; source: "openai-responses"; rawUsage: unknown };
+ 	stopReason: StopReason;
+ 	deferred?: DeferredHandle;
+ 	errorMessage?: string;
+diff --git a/packages/ai/test/openai-responses-usage-provenance.test.ts b/packages/ai/test/openai-responses-usage-provenance.test.ts
+new file mode 100644
+index 0000000..3dceb6c
+--- /dev/null
++++ b/packages/ai/test/openai-responses-usage-provenance.test.ts
+@@ -0,0 +1,151 @@
++import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
++import { describe, expect, it, vi } from "vitest";
++import { stream as streamCodex } from "../src/api/openai-codex-responses.ts";
++import { stream } from "../src/api/openai-responses.ts";
++import type { Model } from "../src/types.ts";
++
++const transport = vi.hoisted(() => ({ events: [] as ResponseStreamEvent[] }));
++vi.mock("openai", () => {
++	class FakeOpenAI {
++		responses = {
++			create: () => ({
++				withResponse: async () => ({
++					data: (async function* () {
++						yield* transport.events;
++					})(),
++					response: { status: 200, headers: new Headers() },
++				}),
++			}),
++		};
++	}
++	return { default: FakeOpenAI };
++});
++
++const model: Model<"openai-responses"> = {
++	id: "gpt-5-mini",
++	name: "GPT-5 Mini",
++	api: "openai-responses",
++	provider: "openai",
++	baseUrl: "https://example.invalid/v1",
++	reasoning: true,
++	input: ["text"],
++	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
++	contextWindow: 400000,
++	maxTokens: 128000,
++};
++
++async function complete(usage: unknown, status: "completed" | "incomplete" = "completed") {
++	transport.events = [
++		{
++			type: `response.${status}`,
++			sequence_number: 0,
++			response: {
++				id: "resp_usage",
++				status,
++				...(status === "incomplete" ? { incomplete_details: { reason: "max_output_tokens" } } : {}),
++				...(usage === undefined ? {} : { usage }),
++			},
++		} as unknown as ResponseStreamEvent,
++	];
++	const resultStream = stream(
++		model,
++		{ messages: [{ role: "user", content: "hi", timestamp: 0 }] },
++		{ apiKey: "test" },
++	);
++	const events = [];
++	for await (const event of resultStream) events.push(event);
++	const result = await resultStream.result();
++	expect(events.at(-1)).toMatchObject({ type: "done", message: result });
++	expect(result.stopReason).toBe(status === "completed" ? "stop" : "length");
++	return result;
++}
++
++// Regression: elBenz/pi-ensemble#12. Exercise raw transport events through terminal assistant settlement.
++describe("Responses usage provenance", () => {
++	it("preserves Codex SSE usage through terminal assistant serialization", async () => {
++		const codexModel: Model<"openai-codex-responses"> = {
++			...model,
++			api: "openai-codex-responses",
++			provider: "openai-codex",
++		};
++		const token = `test.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test" } })).toString("base64")}.test`;
++		for (const rawUsage of [
++			{},
++			{
++				input_tokens: 0,
++				output_tokens: 0,
++				input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
++				total_tokens: 0,
++			},
++		]) {
++			const events = `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_test", status: "completed", output: [], usage: rawUsage } })}\n\n`;
++			const result = await streamCodex(
++				codexModel,
++				{ messages: [{ role: "user", content: "test", timestamp: 0 }] },
++				{
++					apiKey: token,
++					transport: "sse",
++					fetch: async () =>
++						new Response(events, { status: 200, headers: { "content-type": "text/event-stream" } }),
++				},
++			).result();
++			expect(result.stopReason).toBe("stop");
++			expect(result.usage.input).toBe(0);
++			expect(JSON.parse(JSON.stringify(result)).usageProvenance).toEqual({
++				schemaVersion: 1,
++				source: "openai-responses",
++				rawUsage,
++			});
++		}
++	});
++
++	it.each(["completed", "incomplete"] as const)(
++		"distinguishes absent fields from explicit zeros (%s)",
++		async (status) => {
++			const missing = await complete({}, status);
++			const zeros = {
++				input_tokens: 0,
++				output_tokens: 0,
++				input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
++			};
++			const explicit = await complete(zeros, status);
++			expect(missing.usage).toEqual(explicit.usage);
++			expect(missing.usageProvenance).toEqual({ schemaVersion: 1, source: "openai-responses", rawUsage: {} });
++			expect(explicit.usageProvenance).toEqual({ schemaVersion: 1, source: "openai-responses", rawUsage: zeros });
++		},
++	);
++
++	it.each([
++		undefined,
++		null,
++		false,
++		0,
++		"malformed",
++		{ input_tokens: "bad", output_tokens: -2, input_tokens_details: { cached_tokens: null }, extra: ["keep"] },
++	])("preserves raw usage %j", async (rawUsage) => {
++		const result = await complete(rawUsage);
++		expect(result.usageProvenance).toEqual({
++			schemaVersion: 1,
++			source: "openai-responses",
++			rawUsage: rawUsage ?? null,
++		});
++	});
++
++	it("detaches nested raw usage from transport and normalized usage", async () => {
++		const raw = {
++			input_tokens: 20,
++			output_tokens: 7,
++			total_tokens: 27,
++			input_tokens_details: { cached_tokens: 2, cache_write_tokens: 3 },
++			extra: ["keep"],
++		};
++		const expected = structuredClone(raw);
++		const result = await complete(raw);
++		expect(result.usage).toMatchObject({ input: 15, output: 7, cacheRead: 2, cacheWrite: 3, totalTokens: 27 });
++		expect(raw).toEqual(expected);
++		raw.input_tokens_details.cached_tokens = 99;
++		raw.extra.push("changed");
++		result.usage.input = 99;
++		expect(result.usageProvenance).toEqual({ schemaVersion: 1, source: "openai-responses", rawUsage: expected });
++	});
++});

@@ -8,6 +8,7 @@ import { getPiSpawnCommand } from "../runs/shared/pi-spawn.ts";
 import { THINKING_LEVELS } from "../shared/model-info.ts";
 import { calculateBenchmarkCost, type BenchmarkCost, type BenchmarkPricing } from "./policy.ts";
 import { BENCHMARK_TELEMETRY_PATH_ENV } from "./telemetry-extension.ts";
+import { readProviderUsage } from "./provider-usage.ts";
 
 export type MutationPolicy = "forbid" | "allow" | "require";
 
@@ -355,7 +356,8 @@ function parseTranscript(stdout: string): TranscriptMetrics {
 			const text = message.content.filter((part): part is { type: "text"; text: string } => Boolean(part && typeof part === "object" && (part as { type?: unknown }).type === "text" && typeof (part as { text?: unknown }).text === "string")).map((part) => part.text).join("\n");
 			if (text) metrics.candidateOutput = text;
 		}
-		const usage = message.usage && typeof message.usage === "object" ? message.usage as Record<string, unknown> : {};
+		const { usage, issue } = readProviderUsage(message);
+		if (issue) metrics.usageIssues.push(`Turn ${metrics.turns}: ${issue}`);
 		const readUsage = (field: string): number | null => {
 			const value = usage[field];
 			if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
@@ -378,7 +380,8 @@ function parseTranscript(stdout: string): TranscriptMetrics {
 		if (totalTokens !== null && totalTokens > 150_000) metrics.observedTailBreach = true;
 		if (totalTokens === null) metrics.contextIssues.push(`Turn ${metrics.turns}: per-turn total tokens unavailable.`);
 		metrics.peakContextLoad = metrics.peakContextLoad === null || totalTokens === null ? null : Math.max(metrics.peakContextLoad, totalTokens);
-		const cost = usage.cost && typeof usage.cost === "object" ? (usage.cost as Record<string, unknown>).total : undefined;
+		const reportedUsage = message.usage && typeof message.usage === "object" ? message.usage as Record<string, unknown> : {};
+		const cost = reportedUsage.cost && typeof reportedUsage.cost === "object" ? (reportedUsage.cost as Record<string, unknown>).total : undefined;
 		metrics.reportedCost = sumUsage(metrics.reportedCost, typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : null);
 	}
 	if (unfinishedTurn || metrics.turns === 0) {
@@ -514,7 +517,7 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 		const passed = candidate.exitCode === 0 && !candidate.timedOut && mutationPassed && telemetryPassed && evaluation.passed;
 		const cost = repriceTranscript(metrics, benchmarkCase.currentPricing);
 		const result = {
-			schemaVersion: 3,
+			schemaVersion: 4,
 			caseId: benchmarkCase.id,
 			agentRole: benchmarkCase.agentRole,
 			route: benchmarkCase.route,
@@ -522,7 +525,7 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 			execution: { passed: candidate.exitCode === 0 && !candidate.timedOut, exitCode: candidate.exitCode, timedOut: candidate.timedOut },
 			telemetry: {
 				passed: telemetryPassed,
-				usageSource: "Pi message_end.message.usage (adapter-normalized)",
+				usageSource: "Pi message_end.message.usageProvenance.rawUsage (raw Responses usage)",
 				usageIssues: metrics.usageIssues,
 				contextIssues: metrics.contextIssues,
 				computeUnits: { status: "unsupported", reason: "No verified Pi compute-unit field mapping; compute-priced live cases are rejected before launch." },
@@ -531,7 +534,7 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 			evaluation,
 			metrics,
 			...cost,
-			recordedHistoricalCost: { amount: metrics.reportedCost, source: "provider-reported usage.cost.total" },
+			recordedHistoricalCost: { amount: metrics.reportedCost, source: "Pi-reported usage.cost.total (adapter estimate, not provider invoice)" },
 			contextPolicy: { tailBreach: metrics.observedTailBreach ? true : metrics.peakContextLoad === null ? null : false },
 			resolved,
 		};
