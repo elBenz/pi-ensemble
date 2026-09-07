@@ -58,12 +58,16 @@ interface EvaluationResult {
 }
 
 interface TranscriptMetrics {
-	cumulativeInputTokens: number;
-	cumulativeOutputTokens: number;
-	reasoningTokens: number;
-	cacheReadTokens: number;
-	cacheWriteTokens: number;
-	peakContextLoad: number;
+	cumulativeInputTokens: number | null;
+	cumulativeOutputTokens: number | null;
+	reasoningTokens: number | null;
+	cacheReadTokens: number | null;
+	cacheWriteTokens: number | null;
+	usageIssues: string[];
+	/** Unsupported by the inspected Pi adapter; never inferred from reasoning tokens. */
+	computeUnits: null;
+	peakContextLoad: number | null;
+	contextIssues: string[];
 	reportedCost: number | null;
 	turns: number;
 	resolvedModel?: string;
@@ -296,40 +300,88 @@ function changedFiles(before: Record<string, string>, after: Record<string, stri
 	return [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((file) => before[file] !== after[file]).sort();
 }
 
+function sumUsage(total: number | null, value: number | null): number | null {
+	if (total === null || value === null) return null;
+	const sum = total + value;
+	return Number.isFinite(sum) ? sum : null;
+}
+
+function repriceTranscript(metrics: TranscriptMetrics, pricing?: BenchmarkPricing): { benchmarkCost: BenchmarkCost | null; benchmarkCostUnavailableReason: string | null } {
+	if (!pricing) return { benchmarkCost: null, benchmarkCostUnavailableReason: "No current-price metadata." };
+	if (metrics.usageIssues.length > 0 || metrics.turns === 0 || metrics.cumulativeInputTokens === null || metrics.cumulativeOutputTokens === null || metrics.cacheReadTokens === null || metrics.cacheWriteTokens === null) {
+		return { benchmarkCost: null, benchmarkCostUnavailableReason: metrics.usageIssues.join(" ") || "No complete finite usage totals." };
+	}
+	try {
+		return { benchmarkCost: calculateBenchmarkCost({
+			input: metrics.cumulativeInputTokens,
+			output: metrics.cumulativeOutputTokens,
+			...(metrics.reasoningTokens === null ? {} : { reasoning: metrics.reasoningTokens }),
+			cacheRead: metrics.cacheReadTokens,
+			cacheWrite: metrics.cacheWriteTokens,
+		}, pricing), benchmarkCostUnavailableReason: null };
+	} catch (error) {
+		return { benchmarkCost: null, benchmarkCostUnavailableReason: error instanceof Error ? error.message : String(error) };
+	}
+}
+
 function parseTranscript(stdout: string): TranscriptMetrics {
-	const metrics: TranscriptMetrics = { cumulativeInputTokens: 0, cumulativeOutputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, peakContextLoad: 0, reportedCost: null, turns: 0, candidateOutput: "" };
+	const metrics: TranscriptMetrics = { cumulativeInputTokens: 0, cumulativeOutputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, usageIssues: [], computeUnits: null, peakContextLoad: 0, contextIssues: [], reportedCost: 0, turns: 0, candidateOutput: "" };
+	let unfinishedTurn = false;
 	for (const line of stdout.split(/\r?\n/)) {
 		if (!line.trim()) continue;
 		let event: unknown;
-		try { event = JSON.parse(line); } catch { continue; }
+		try { event = JSON.parse(line); } catch {
+			metrics.usageIssues.push("Malformed transcript record; usage may be incomplete.");
+			continue;
+		}
 		if (!event || typeof event !== "object") continue;
 		const record = event as Record<string, unknown>;
-		if (record.type !== "message_end" || !record.message || typeof record.message !== "object") continue;
+		if (record.type === "compaction_start" || record.type === "compaction_end" || record.type === "auto_compaction_start" || record.type === "auto_compaction_end") {
+			metrics.usageIssues.push("Compaction summary usage is not captured by terminal assistant telemetry.");
+		}
+		if (record.type === "message_update") unfinishedTurn = true;
+		if (!record.message || typeof record.message !== "object") continue;
 		const message = record.message as Record<string, unknown>;
 		if (message.role !== "assistant") continue;
+		if (record.type === "message_start") unfinishedTurn = true;
+		if (record.type !== "message_end") continue;
+		unfinishedTurn = false;
 		metrics.turns += 1;
+		if (message.stopReason === "error" || message.stopReason === "aborted") metrics.usageIssues.push(`Turn ${metrics.turns}: ${message.stopReason} response may have incomplete usage.`);
 		if (typeof message.model === "string") metrics.resolvedModel = message.model;
 		if (Array.isArray(message.content)) {
 			const text = message.content.filter((part): part is { type: "text"; text: string } => Boolean(part && typeof part === "object" && (part as { type?: unknown }).type === "text" && typeof (part as { text?: unknown }).text === "string")).map((part) => part.text).join("\n");
 			if (text) metrics.candidateOutput = text;
 		}
 		const usage = message.usage && typeof message.usage === "object" ? message.usage as Record<string, unknown> : {};
-		const input = typeof usage.input === "number" ? usage.input : 0;
-		const output = typeof usage.output === "number" ? usage.output : 0;
-		const reasoning = typeof usage.reasoning === "number" ? usage.reasoning : 0;
-		const cacheRead = typeof usage.cacheRead === "number" ? usage.cacheRead : 0;
-		const cacheWrite = typeof usage.cacheWrite === "number" ? usage.cacheWrite : 0;
-		metrics.cumulativeInputTokens += input;
-		metrics.cumulativeOutputTokens += output;
-		metrics.reasoningTokens += reasoning;
-		metrics.cacheReadTokens += cacheRead;
-		metrics.cacheWriteTokens += cacheWrite;
-		const totalTokens = typeof usage.totalTokens === "number" && Number.isFinite(usage.totalTokens)
-			? usage.totalTokens
-			: input + output + cacheRead + cacheWrite;
-		metrics.peakContextLoad = Math.max(metrics.peakContextLoad, totalTokens);
+		const readUsage = (field: string): number | null => {
+			const value = usage[field];
+			if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+			if (field !== "reasoning") metrics.usageIssues.push(`Turn ${metrics.turns}: usage.${field} ${value === undefined ? "missing" : "invalid"}.`);
+			return null;
+		};
+		const input = readUsage("input");
+		const output = readUsage("output");
+		const reasoning = readUsage("reasoning");
+		const cacheRead = readUsage("cacheRead");
+		const cacheWrite = readUsage("cacheWrite");
+		metrics.cumulativeInputTokens = sumUsage(metrics.cumulativeInputTokens, input);
+		metrics.cumulativeOutputTokens = sumUsage(metrics.cumulativeOutputTokens, output);
+		metrics.reasoningTokens = sumUsage(metrics.reasoningTokens, reasoning);
+		metrics.cacheReadTokens = sumUsage(metrics.cacheReadTokens, cacheRead);
+		metrics.cacheWriteTokens = sumUsage(metrics.cacheWriteTokens, cacheWrite);
+		const totalTokens = usage.totalTokens === undefined
+			? sumUsage(sumUsage(input, output), sumUsage(cacheRead, cacheWrite))
+			: typeof usage.totalTokens === "number" && Number.isFinite(usage.totalTokens) && usage.totalTokens >= 0 ? usage.totalTokens : null;
+		if (totalTokens === null) metrics.contextIssues.push(`Turn ${metrics.turns}: per-turn total tokens unavailable.`);
+		metrics.peakContextLoad = metrics.peakContextLoad === null || totalTokens === null ? null : Math.max(metrics.peakContextLoad, totalTokens);
 		const cost = usage.cost && typeof usage.cost === "object" ? (usage.cost as Record<string, unknown>).total : undefined;
-		if (typeof cost === "number" && Number.isFinite(cost)) metrics.reportedCost = (metrics.reportedCost ?? 0) + cost;
+		metrics.reportedCost = sumUsage(metrics.reportedCost, typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : null);
+	}
+	if (unfinishedTurn || metrics.turns === 0) {
+		metrics.cumulativeInputTokens = metrics.cumulativeOutputTokens = metrics.cacheReadTokens = metrics.cacheWriteTokens = metrics.reasoningTokens = metrics.peakContextLoad = metrics.reportedCost = null;
+		metrics.usageIssues.push(unfinishedTurn ? "Unfinished assistant turn; usage unavailable." : "No assistant usage reported.");
+		metrics.contextIssues.push("Incomplete assistant context telemetry.");
 	}
 	return metrics;
 }
@@ -382,7 +434,7 @@ function reportMarkdown(benchmarkCase: BenchmarkCase, result: Record<string, unk
 	const metrics = result.metrics as TranscriptMetrics;
 	const evaluation = result.evaluation as EvaluationResult;
 	const benchmarkCost = result.benchmarkCost as BenchmarkCost | null;
-	return `# Benchmark: ${benchmarkCase.id}\n\n**${result.passed ? "PASS" : "FAIL"}**\n\n- Agent role: ${benchmarkCase.agentRole}\n- Route: ${benchmarkCase.route.modelTier} (${benchmarkCase.route.model}; Thinking level ${benchmarkCase.route.thinkingLevel})\n- Evaluator: ${evaluation.kind} — ${evaluation.passed ? "passed" : "failed"}\n- Mutation policy: ${benchmarkCase.mutationPolicy}\n- Cumulative output tokens: ${metrics.cumulativeOutputTokens}\n- Reasoning tokens: ${metrics.reasoningTokens}\n- Peak context load: ${metrics.peakContextLoad}\n- Tail breach: ${metrics.peakContextLoad > 150_000 ? "yes" : "no"}\n- Current Benchmark cost: ${benchmarkCost ? `$${benchmarkCost.amount.toFixed(6)}` : "unavailable (no current-price metadata)"}\n- Recorded historical cost: ${metrics.reportedCost === null ? "unavailable" : `$${metrics.reportedCost.toFixed(6)}`}\n\n## Evaluation\n\n${evaluation.evidence}\n`;
+	return `# Benchmark: ${benchmarkCase.id}\n\n**${result.passed ? "PASS" : "FAIL"}**\n\n- Agent role: ${benchmarkCase.agentRole}\n- Route: ${benchmarkCase.route.modelTier} (${benchmarkCase.route.model}; Thinking level ${benchmarkCase.route.thinkingLevel})\n- Evaluator: ${evaluation.kind} — ${evaluation.passed ? "passed" : "failed"}\n- Mutation policy: ${benchmarkCase.mutationPolicy}\n- Cumulative output tokens: ${metrics.cumulativeOutputTokens ?? "unknown"}\n- Reasoning tokens: ${metrics.reasoningTokens ?? "unknown"}\n- Peak context load: ${metrics.peakContextLoad ?? "unknown"}\n- Tail breach: ${metrics.peakContextLoad === null ? "unknown" : metrics.peakContextLoad > 150_000 ? "yes" : "no"}\n- Current Benchmark cost: ${benchmarkCost ? `$${benchmarkCost.amount.toFixed(6)}` : `unavailable (${result.benchmarkCostUnavailableReason})`}\n- Recorded historical cost: ${metrics.reportedCost === null ? "unavailable" : `$${metrics.reportedCost.toFixed(6)}`}\n\n## Evaluation\n\n${evaluation.evidence}\n`;
 }
 
 export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<BenchmarkRunResult> {
@@ -454,28 +506,29 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 		};
 		writeImmutableJson(receiptPath, receipt);
 		const evaluation = await evaluate(benchmarkCase.evaluator, metrics.candidateOutput, workspace, outputDir, caseDir, env);
-		const passed = candidate.exitCode === 0 && !candidate.timedOut && mutationPassed && resolved.complete && evaluation.passed;
-		const benchmarkCost = benchmarkCase.currentPricing ? calculateBenchmarkCost({
-			input: metrics.cumulativeInputTokens,
-			output: metrics.cumulativeOutputTokens,
-			reasoning: metrics.reasoningTokens,
-			cacheRead: metrics.cacheReadTokens,
-			cacheWrite: metrics.cacheWriteTokens,
-		}, benchmarkCase.currentPricing) : null;
+		const telemetryPassed = resolved.complete && metrics.peakContextLoad !== null && metrics.usageIssues.length === 0;
+		const passed = candidate.exitCode === 0 && !candidate.timedOut && mutationPassed && telemetryPassed && evaluation.passed;
+		const cost = repriceTranscript(metrics, benchmarkCase.currentPricing);
 		const result = {
-			schemaVersion: 2,
+			schemaVersion: 3,
 			caseId: benchmarkCase.id,
 			agentRole: benchmarkCase.agentRole,
 			route: benchmarkCase.route,
 			passed,
 			execution: { passed: candidate.exitCode === 0 && !candidate.timedOut, exitCode: candidate.exitCode, timedOut: candidate.timedOut },
-			telemetry: { passed: resolved.complete },
+			telemetry: {
+				passed: telemetryPassed,
+				usageSource: "Pi message_end.message.usage (adapter-normalized)",
+				usageIssues: metrics.usageIssues,
+				contextIssues: metrics.contextIssues,
+				computeUnits: { status: "unsupported", reason: "No verified Pi compute-unit field mapping; compute-priced live cases are rejected before launch." },
+			},
 			mutation: { policy: benchmarkCase.mutationPolicy, passed: mutationPassed, changedFiles: mutations },
 			evaluation,
 			metrics,
-			benchmarkCost,
+			...cost,
 			recordedHistoricalCost: { amount: metrics.reportedCost, source: "provider-reported usage.cost.total" },
-			contextPolicy: { tailBreach: metrics.peakContextLoad > 150_000 },
+			contextPolicy: { tailBreach: metrics.peakContextLoad === null ? null : metrics.peakContextLoad > 150_000 },
 			resolved,
 		};
 		const resultPath = path.join(outputDir, "result.json");

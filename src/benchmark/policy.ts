@@ -16,7 +16,7 @@ export interface BenchmarkPricing {
 export interface BenchmarkUsage {
 	input: number;
 	output: number;
-	reasoning: number;
+	reasoning?: number;
 	cacheRead: number;
 	cacheWrite: number;
 	/** Retained separately because reasoning is already included in output usage. */

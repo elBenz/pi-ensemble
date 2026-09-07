@@ -96,6 +96,73 @@ describe("benchmark plan policy", () => {
 		if (process.platform !== "win32") assert.equal(fs.statSync(completed.receiptPath).mode & 0o222, 0);
 	});
 
+	it("retains partial-usage receipts and known spend, then blocks queued mutation work", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-benchmark-unknown-spend-"));
+		tempDirs.push(root);
+		writeCase(root, { currentPricing: { currency: "USD", unit: "per-million-tokens", effectiveAt: "2026-08-27", source: "https://example.invalid/current-prices", input: 0, output: 1, cacheRead: 0, cacheWrite: 0 } });
+		const planPath = path.join(root, "plan.json");
+		fs.writeFileSync(planPath, JSON.stringify({ id: "partial-usage", stage: "screening", launches: [{ case: "case.json", repetitions: 3 }] }));
+		const mock = createMockPi();
+		mocks.push(mock);
+		mock.install();
+		mock.onCall(response(80_000, 1_000_000));
+		const partial = response(90_000);
+		Reflect.deleteProperty(partial.jsonl[0]!.message.usage, "output");
+		mock.onCall(partial);
+
+		const completed = await runBenchmarkPlan({ planPath, outputDir: path.join(root, "results") });
+		assert.equal(completed.blocked, true);
+		assert.equal(completed.passed, false);
+		assert.equal(mock.callCount(), 2);
+		const result = JSON.parse(fs.readFileSync(completed.resultPath, "utf-8"));
+		assert.equal(result.budget.cumulativeSpend, null, "unknown spend must not appear as a complete total");
+		assert.equal(result.budget.knownSpend, 1);
+		assert.equal(result.budget.complete, false);
+		const runDir = path.join(root, "results", "run-002");
+		const run = JSON.parse(fs.readFileSync(path.join(runDir, "result.json"), "utf-8"));
+		assert.equal(run.metrics.cumulativeOutputTokens, null);
+		assert.equal(run.benchmarkCost, null);
+		assert.match(run.benchmarkCostUnavailableReason, /output/);
+		assert.equal(run.evaluation.passed, true);
+		assert.equal(run.execution.passed, true);
+		assert.equal(fs.readFileSync(path.join(runDir, "workspace", "done.txt"), "utf-8"), "done\n");
+		const raw = JSON.parse(fs.readFileSync(path.join(runDir, "receipt.json"), "utf-8"));
+		assert.deepEqual(JSON.parse(raw.candidate.stdout.trim()), partial.jsonl[0]);
+		const receipt = JSON.parse(fs.readFileSync(completed.receiptPath, "utf-8"));
+		assert.deepEqual(receipt.decisions.map((decision: { action: string }) => decision.action), ["launched", "launched", "blocked"]);
+		assert.match(receipt.decisions[2].reason, /unavailable/i);
+		assert.match(fs.readFileSync(completed.reportPath, "utf-8"), /unavailable[\s\S]*known spend.*\$1\.000000/i);
+	});
+
+	it("keeps missing context unknown even when all billable usage is explicitly zero", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-benchmark-missing-context-"));
+		tempDirs.push(root);
+		writeCase(root);
+		const planPath = path.join(root, "plan.json");
+		fs.writeFileSync(planPath, JSON.stringify({ id: "missing-context", stage: "screening", launches: [{ case: "case.json", repetitions: 3 }] }));
+		const mock = createMockPi();
+		mocks.push(mock);
+		mock.install();
+		for (let i = 0; i < 3; i += 1) {
+			const turn = response(0, 0);
+			Object.assign(turn.jsonl[0]!.message.usage, { input: 0, reasoning: 0, cacheRead: 0, totalTokens: -1 });
+			mock.onCall(turn);
+		}
+		const completed = await runBenchmarkPlan({ planPath, outputDir: path.join(root, "results") });
+		assert.equal(completed.passed, false);
+		assert.equal(completed.blocked, false, "unknown context alone does not make known spend unknown");
+		const result = JSON.parse(fs.readFileSync(completed.resultPath, "utf-8"));
+		assert.equal(result.routes[0].typicalPeakContextLoad, null);
+		assert.equal(result.routes[0].contextComplete, false);
+		assert.equal(result.routes[0].eligible, false);
+		assert.equal(result.budget.cumulativeSpend, 0);
+		const run = JSON.parse(fs.readFileSync(path.join(root, "results", "run-001", "result.json"), "utf-8"));
+		assert.equal(run.metrics.peakContextLoad, null);
+		assert.equal(run.metrics.cumulativeOutputTokens, 0);
+		assert.equal(run.contextPolicy.tailBreach, null);
+		assert.match(fs.readFileSync(path.join(root, "results", "run-001", "report.md"), "utf-8"), /Tail breach: unknown/);
+	});
+
 	it("blocks the next screening launch at the $25 boundary", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-benchmark-plan-hard-boundary-"));
 		tempDirs.push(root);

@@ -62,8 +62,8 @@ function routeKey(result: Record<string, unknown>): string {
 function reportMarkdown(plan: BenchmarkPlan, result: Record<string, unknown>): string {
 	const budget = result.budget as Record<string, unknown>;
 	const routes = result.routes as Array<Record<string, unknown>>;
-	const routeLines = routes.map((route) => `- ${route.agentRole}: ${route.modelTier} (${route.model}; Thinking level ${route.thinkingLevel}) — ${route.runs}/${route.expectedRuns} runs, typical ${route.typicalPeakContextLoad ?? "n/a"}, ${route.eligible ? "eligible" : "ineligible"}, ${route.tailBreaches} Tail breach(es)${route.finalistAccepted === null ? "" : `, finalist ${route.finalistAccepted ? "accepted" : "rejected"}`}`).join("\n");
-	return `# Benchmark plan: ${plan.id}\n\n**${result.passed ? "PASS" : "INCOMPLETE/FAIL"}**\n\n- Stage: ${plan.stage}\n- Launches completed: ${result.completedLaunches}/${plan.launches.length}\n- Cumulative Benchmark cost: $${Number(budget.cumulativeSpend).toFixed(6)}\n- Spend warning: ${budget.warning ? "yes" : "no"}\n- Hard stop: ${budget.blocked ? "yes" : "no"}\n\n## Routes\n\n${routeLines || "No completed Routes."}\n`;
+	const routeLines = routes.map((route) => `- ${route.agentRole}: ${route.modelTier} (${route.model}; Thinking level ${route.thinkingLevel}) — ${route.runs}/${route.expectedRuns} runs, typical ${route.typicalPeakContextLoad ?? "n/a"}, ${!route.contextComplete ? "context unknown" : route.eligible ? "eligible" : "ineligible"}, ${route.tailBreaches} Tail breach(es)${route.finalistAccepted === null ? "" : `, finalist ${route.finalistAccepted ? "accepted" : "rejected"}`}`).join("\n");
+	return `# Benchmark plan: ${plan.id}\n\n**${result.passed ? "PASS" : "INCOMPLETE/FAIL"}**\n\n- Stage: ${plan.stage}\n- Launches completed: ${result.completedLaunches}/${plan.launches.length}\n- Cumulative Benchmark cost: ${budget.complete ? `$${Number(budget.cumulativeSpend).toFixed(6)}` : `unavailable; known spend $${Number(budget.knownSpend).toFixed(6)} (${budget.unavailableReason})`}\n- Spend warning: ${budget.warning ? "yes" : "no"}\n- Hard stop: ${budget.blocked ? "yes" : "no"}\n\n## Routes\n\n${routeLines || "No completed Routes."}\n`;
 }
 
 export async function runBenchmarkPlan(options: RunBenchmarkPlanOptions): Promise<BenchmarkPlanResult> {
@@ -77,6 +77,7 @@ export async function runBenchmarkPlan(options: RunBenchmarkPlanOptions): Promis
 	}
 	fs.mkdirSync(outputDir, { recursive: true });
 	let cumulativeSpend = 0;
+	let unavailableReason: string | null = null;
 	const decisions: Array<Record<string, unknown>> = [];
 	const completed: Array<Record<string, unknown>> = [];
 	let warned = false;
@@ -88,21 +89,22 @@ export async function runBenchmarkPlan(options: RunBenchmarkPlanOptions): Promis
 			warned = true;
 			options.onWarning?.(`${plan.stage} Benchmark spend reached $${spend.warningLimit}; cumulative $${cumulativeSpend.toFixed(6)}.`);
 		}
-		if (spend.blocked) {
+		if (spend.blocked || unavailableReason !== null) {
 			blocked = true;
 			for (let blockedIndex = index; blockedIndex < plan.launches.length; blockedIndex += 1) {
 				const blockedLaunch = plan.launches[blockedIndex]!;
-				decisions.push({ index: blockedIndex, action: "blocked", cumulativeSpend, hardLimit: spend.hardLimit, casePath: blockedLaunch.casePath, repetition: blockedLaunch.repetition });
+				decisions.push({ index: blockedIndex, action: "blocked", cumulativeSpend: unavailableReason === null ? cumulativeSpend : null, knownSpend: cumulativeSpend, reason: unavailableReason === null ? "Hard spend limit reached." : `Benchmark cost unavailable: ${unavailableReason}`, hardLimit: spend.hardLimit, casePath: blockedLaunch.casePath, repetition: blockedLaunch.repetition });
 			}
 			break;
 		}
 		const runOutputDir = path.join(outputDir, `run-${String(index + 1).padStart(3, "0")}`);
 		const run = await runBenchmarkCase({ casePath: launch.casePath, outputDir: runOutputDir, env: options.env });
 		const normalized = JSON.parse(fs.readFileSync(run.resultPath, "utf-8")) as Record<string, unknown>;
-		const benchmarkCost = normalized.benchmarkCost as { amount: number };
+		const benchmarkCost = normalized.benchmarkCost as { amount: number } | null;
 		const before = cumulativeSpend;
-		cumulativeSpend += benchmarkCost.amount;
-		decisions.push({ index, action: "launched", cumulativeSpendBefore: before, cumulativeSpendAfter: cumulativeSpend, casePath: launch.casePath, repetition: launch.repetition, receiptPath: run.receiptPath, resultPath: run.resultPath });
+		if (benchmarkCost && Number.isFinite(benchmarkCost.amount) && benchmarkCost.amount >= 0 && Number.isFinite(cumulativeSpend + benchmarkCost.amount)) cumulativeSpend += benchmarkCost.amount;
+		else unavailableReason = String(normalized.benchmarkCostUnavailableReason ?? "Invalid or overflowing Benchmark cost.");
+		decisions.push({ index, action: "launched", cumulativeSpendBefore: before, cumulativeSpendAfter: unavailableReason === null ? cumulativeSpend : null, knownSpend: cumulativeSpend, costUnavailableReason: unavailableReason, casePath: launch.casePath, repetition: launch.repetition, receiptPath: run.receiptPath, resultPath: run.resultPath });
 		completed.push(normalized);
 	}
 
@@ -116,26 +118,32 @@ export async function runBenchmarkPlan(options: RunBenchmarkPlanOptions): Promis
 	const routes = [...grouped.values()].map((runs) => {
 		const first = runs[0]!;
 		const route = first.route as Record<string, unknown>;
-		const context = summarizeRouteContext(runs.map((run) => (run.metrics as { peakContextLoad: number }).peakContextLoad), plan.stage);
+		const peaks = runs.map((run) => (run.metrics as { peakContextLoad: number | null }).peakContextLoad);
+		const knownPeaks = peaks.filter((peak): peak is number => peak !== null && Number.isFinite(peak) && peak >= 0);
+		const contextComplete = knownPeaks.length === peaks.length;
+		const context = summarizeRouteContext(knownPeaks, plan.stage);
 		const expectedRuns = plan.stage === "screening" ? 3 : 9;
-		return { agentRole: first.agentRole, ...route, runs: runs.length, expectedRuns, complete: runs.length === expectedRuns, ...context };
+		return { agentRole: first.agentRole, ...route, runs: runs.length, expectedRuns, complete: runs.length === expectedRuns, ...context,
+			contextComplete,
+			...(contextComplete ? {} : { typicalPeakContextLoad: null, eligible: false, finalistAccepted: null }),
+		};
 	});
 	const finalSpend = classifySpend(plan.stage, cumulativeSpend);
 	if (finalSpend.warning && !warned) {
 		warned = true;
 		options.onWarning?.(`${plan.stage} Benchmark spend reached $${finalSpend.warningLimit}; cumulative $${cumulativeSpend.toFixed(6)}.`);
 	}
-	const passed = !blocked
+	const passed = !blocked && unavailableReason === null
 		&& completed.every((run) => run.passed === true)
 		&& routes.every((route) => route.complete && route.eligible && (plan.stage !== "finalist" || route.finalistAccepted === true));
 	const result = {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		planId: plan.id,
 		stage: plan.stage,
 		passed,
 		completedLaunches: completed.length,
 		routes,
-		budget: { cumulativeSpend, warning: warned, blocked, warningLimit: finalSpend.warningLimit, hardLimit: finalSpend.hardLimit },
+		budget: { cumulativeSpend: unavailableReason === null ? cumulativeSpend : null, knownSpend: cumulativeSpend, complete: unavailableReason === null, unavailableReason, warning: warned, blocked, warningLimit: finalSpend.warningLimit, hardLimit: finalSpend.hardLimit },
 	};
 	const receiptPath = path.join(outputDir, "receipt.json");
 	const resultPath = path.join(outputDir, "result.json");

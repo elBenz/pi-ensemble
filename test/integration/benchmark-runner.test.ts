@@ -302,7 +302,11 @@ describe("benchmark runner", () => {
 			timeoutMs: 2_000,
 			mutationPolicy: "forbid",
 		}));
+		const mock = createMockPi();
+		mocks.push(mock);
+		mock.install();
 		await assert.rejects(runBenchmarkCase({ casePath, outputDir: path.join(root, "output") }), /does not capture compute-unit telemetry/);
+		assert.equal(mock.callCount(), 0, "unsupported compute pricing must not launch a candidate");
 		assert.equal(fs.existsSync(path.join(root, "output")), false);
 	});
 });
