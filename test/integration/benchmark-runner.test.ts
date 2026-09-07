@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
-import { runBenchmarkCase } from "../../src/benchmark/runner.ts";
+import { parseBenchmarkCase, runBenchmarkCase } from "../../src/benchmark/runner.ts";
 import { createMockPi } from "../support/mock-pi.ts";
 
 const tempDirs: string[] = [];
@@ -273,5 +273,36 @@ describe("benchmark runner", () => {
 		assert.ok(callName);
 		const call = fs.readFileSync(path.join(mock.dir, callName), "utf-8");
 		assert.doesNotMatch(call, /host-only|hidden checks passed/);
+	});
+
+	it("rejects malformed current-pricing provenance at the runner boundary", () => {
+		assert.throws(() => parseBenchmarkCase({
+			id: "invalid-pricing",
+			agentRole: "scout",
+			route: { modelTier: "GPT-5.6 Luna", model: "openai-codex/gpt-5.6-luna", thinkingLevel: "low" },
+			currentPricing: { currency: "USD", unit: "per-million-tokens", effectiveAt: "not-a-date", source: "not-a-url", input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			prompt: "No launch.",
+			evaluator: { kind: "output-includes", expected: "never" },
+			timeoutMs: 2_000,
+			mutationPolicy: "forbid",
+		}), /effectiveAt must be a valid ISO date/);
+	});
+
+	it("rejects compute-unit pricing before launching a live Pi case", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-benchmark-compute-"));
+		tempDirs.push(root);
+		const casePath = path.join(root, "case.json");
+		fs.writeFileSync(casePath, JSON.stringify({
+			id: "compute-unsupported",
+			agentRole: "scout",
+			route: { modelTier: "GPT-5.6 Luna", model: "openai-codex/gpt-5.6-luna", thinkingLevel: "low" },
+			currentPricing: { currency: "USD", unit: "per-million-tokens", effectiveAt: "2026-08-27", source: "https://example.invalid/prices", input: 1, output: 1, cacheRead: 1, cacheWrite: 1, computeUnit: 1 },
+			prompt: "No launch.",
+			evaluator: { kind: "output-includes", expected: "never" },
+			timeoutMs: 2_000,
+			mutationPolicy: "forbid",
+		}));
+		await assert.rejects(runBenchmarkCase({ casePath, outputDir: path.join(root, "output") }), /does not capture compute-unit telemetry/);
+		assert.equal(fs.existsSync(path.join(root, "output")), false);
 	});
 });

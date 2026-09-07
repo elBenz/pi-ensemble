@@ -9,6 +9,8 @@ export interface BenchmarkPricing {
 	output: number;
 	cacheRead: number;
 	cacheWrite: number;
+	/** Optional provider charge per million compute units. */
+	computeUnit?: number;
 }
 
 export interface BenchmarkUsage {
@@ -17,6 +19,8 @@ export interface BenchmarkUsage {
 	reasoning: number;
 	cacheRead: number;
 	cacheWrite: number;
+	/** Retained separately because reasoning is already included in output usage. */
+	computeUnits?: number;
 }
 
 export interface BenchmarkCost {
@@ -31,12 +35,23 @@ const SPEND_LIMITS: Record<BenchmarkStage, { warningLimit: number; hardLimit: nu
 };
 
 export function calculateBenchmarkCost(usage: BenchmarkUsage, pricing: BenchmarkPricing): BenchmarkCost {
+	for (const [field, value] of Object.entries(usage)) {
+		if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw new Error(`Benchmark usage ${field} must be a non-negative finite number.`);
+	}
+	if (pricing.computeUnit !== undefined && usage.computeUnits === undefined) {
+		throw new Error("Compute-unit pricing requires compute-unit usage; Benchmark cost unavailable.");
+	}
+	if (usage.computeUnits !== undefined && pricing.computeUnit === undefined) {
+		throw new Error("Compute-unit usage requires compute-unit pricing; Benchmark cost unavailable.");
+	}
 	const amount = (
 		usage.input * pricing.input
 		+ usage.output * pricing.output
 		+ usage.cacheRead * pricing.cacheRead
 		+ usage.cacheWrite * pricing.cacheWrite
+		+ (usage.computeUnits ?? 0) * (pricing.computeUnit ?? 0)
 	) / 1_000_000;
+	if (!Number.isFinite(amount) || amount < 0) throw new Error("Benchmark cost must be a non-negative finite number.");
 	return { amount, pricing, usage };
 }
 

@@ -106,6 +106,43 @@ Run comparable repetitions and enforce cumulative spend with a plan:
 
 Pass plan JSON to the same command. Keep the complete stage in one plan: exactly three completed runs per screening Route or nine per finalist Route. Plans require `currentPricing` on every case. Screening warns at $15 and blocks new launches at $25; finalist plans warn at $30 cumulative and block new launches at $50. Checks occur between sequential launches, so active mutation-capable runs always finish. Plan results report median Peak context load per Route, mark medians above 100k ineligible, count runs above 150k as Tail breaches, and reject a nine-run finalist Route with more than one breach. Completed run receipts remain available after hard stop.
 
+### Importing external DeepSWE evidence
+
+Import a preserved official artifact through the same top-level runner without launching Pi, then regenerate a report offline:
+
+```sh
+npm run benchmark -- import-deepswe docs/research/deepswe-refresh/leaderboard-live.json \
+  --output ./benchmark-results/evidence --retrieved-at 2026-09-07T11:37:08.124933+00:00
+# Add --current-pricing ./openai-prices.json only when it contains dated source/rates,
+# including explicit cacheWrite and computeUnit rates (zero is written as 0).
+npm run benchmark -- report-deepswe ./benchmark-results/evidence/deepswe-v1.1-<sha-prefix>-unpriced \
+  --output ./benchmark-results/deepswe-report
+```
+
+Import stores the source bytes read-only, content-addresses snapshots by SHA-256, and records source URL, source generation time, retrieval time, and benchmark version. Re-importing identical bytes rejects rather than overwriting; changed bytes create a new snapshot directory. Regeneration reads only that local immutable snapshot: it makes no network request, does not launch Pi, and does not change Pi settings. The normalized JSON retains every source row, all twenty GPT-6 Astra/GPT-5.6 Sol/Terra/Luna effort configurations when present, and non-GPT rows as comparison baselines only. Markdown compares GPT configurations; baseline evidence remains in JSON.
+
+`--current-pricing` JSON is keyed by source model and uses USD per million units. Every rate is explicit so missing data cannot become a zero charge. Example below reproduces the snapshot's Astra cost basis; replace its example URL/date and verify rates before treating them as current pricing:
+
+```json
+{
+  "gpt-6-astra": {
+    "currency": "USD",
+    "unit": "per-million-tokens",
+    "effectiveAt": "2026-09-07",
+    "source": "https://example.com/pricing",
+    "input": 12,
+    "output": 50,
+    "cacheRead": 1.2,
+    "cacheWrite": 15,
+    "computeUnit": 2
+  }
+}
+```
+
+`input`, `output`, `cacheRead`, and `cacheWrite` are USD per million tokens; `computeUnit` is USD per million compute units. Import requires a valid ISO effective date, HTTP(S) source URL, USD currency, finite non-negative rates, and all required usage fields. The pricing file is retained with a SHA-256 in provenance; regeneration verifies it before producing a report.
+
+Recorded historical cost, captured website-adjusted cost, and independently current Benchmark cost are distinct. Without complete dated current pricing and usage provenance, current Benchmark cost remains explicitly unavailable; this avoids token-only Astra undercounting because Astra has compute-unit charges. The local live runner intentionally rejects `computeUnit` pricing before launching Pi because it does not yet capture compute-unit telemetry; external DeepSWE import supports compute charges. Context absent from aggregate evidence is `unknown`, not eligible or failed.
+
 For host-side validation, use `evaluator.kind: "command"` with `command`, optional `args`, `expectations`, and `timeoutMs`. `{input}`, `{workspace}`, and `{caseDir}` tokens resolve after candidate exit; the same input and workspace paths are exposed as `PI_BENCHMARK_EVALUATOR_INPUT` and `PI_BENCHMARK_WORKSPACE`. Evaluator input JSON contains `candidateOutput`, `workspace`, and `expectations`. Commands are trusted case configuration and run with operator permissions.
 
 A complete historical case lives at `benchmarks/historical-mission-lock/case.json`. It replays the source immediately before the later fix; its host-only evaluator preserves known lock-collision behavior and adds an unseen Windows edge case.

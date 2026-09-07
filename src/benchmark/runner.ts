@@ -98,21 +98,39 @@ function nonNegativeNumber(value: unknown, field: string): number {
 	return value;
 }
 
+function validIsoDate(value: string): boolean {
+	return /^\d{4}-\d{2}-\d{2}(?:T[^\s]+)?$/.test(value) && Number.isFinite(Date.parse(value));
+}
+
+function validHttpUrl(value: string): boolean {
+	try {
+		const url = new URL(value);
+		return url.protocol === "https:" || url.protocol === "http:";
+	} catch {
+		return false;
+	}
+}
+
 function parsePricing(value: unknown): BenchmarkPricing | undefined {
 	if (value === undefined) return undefined;
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("currentPricing must be an object.");
 	const pricing = value as Record<string, unknown>;
 	if (pricing.currency !== "USD") throw new Error("currentPricing.currency must be USD.");
 	if (pricing.unit !== "per-million-tokens") throw new Error("currentPricing.unit must be per-million-tokens.");
+	const effectiveAt = requiredString(pricing.effectiveAt, "currentPricing.effectiveAt");
+	const source = requiredString(pricing.source, "currentPricing.source");
+	if (!validIsoDate(effectiveAt)) throw new Error("currentPricing.effectiveAt must be a valid ISO date.");
+	if (!validHttpUrl(source)) throw new Error("currentPricing.source must be a valid HTTP(S) URL.");
 	return {
 		currency: "USD",
 		unit: "per-million-tokens",
-		effectiveAt: requiredString(pricing.effectiveAt, "currentPricing.effectiveAt"),
-		source: requiredString(pricing.source, "currentPricing.source"),
+		effectiveAt,
+		source,
 		input: nonNegativeNumber(pricing.input, "currentPricing.input"),
 		output: nonNegativeNumber(pricing.output, "currentPricing.output"),
 		cacheRead: nonNegativeNumber(pricing.cacheRead, "currentPricing.cacheRead"),
 		cacheWrite: nonNegativeNumber(pricing.cacheWrite, "currentPricing.cacheWrite"),
+		...(pricing.computeUnit === undefined ? {} : { computeUnit: nonNegativeNumber(pricing.computeUnit, "currentPricing.computeUnit") }),
 	};
 }
 
@@ -372,6 +390,9 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 	const outputDir = path.resolve(options.outputDir);
 	if (fs.existsSync(outputDir)) throw new Error(`Output directory already exists: ${outputDir}`);
 	const benchmarkCase = parseBenchmarkCase(JSON.parse(fs.readFileSync(casePath, "utf-8")));
+	if (benchmarkCase.currentPricing?.computeUnit !== undefined) {
+		throw new Error("Local benchmark runner does not capture compute-unit telemetry; computeUnit pricing is unsupported for live cases. Import external evidence instead.");
+	}
 	const caseDir = path.dirname(casePath);
 	const fixturePath = benchmarkCase.fixture ? path.resolve(caseDir, benchmarkCase.fixture) : undefined;
 	if (fixturePath && (outputDir === fixturePath || outputDir.startsWith(`${fixturePath}${path.sep}`))) throw new Error("Output directory must not be inside fixture.");

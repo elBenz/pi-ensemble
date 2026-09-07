@@ -1,0 +1,17 @@
+{
+  "retrieved_at": "2026-09-07T11:37:08.124933+00:00",
+  "sources": [
+    {
+      "file": "leaderboard-live.json",
+      "url": "https://deepswe.datacurve.ai/artifacts/v1.1/leaderboard-live.json",
+      "sha256": "005cbedb49f988ba3f0d9636300862ad7ace93ce1992b37faf9945fe5b383415"
+    },
+    {
+      "file": "site-repricing-excerpt.txt",
+      "url": "https://deepswe.datacurve.ai/assets/index-C8-z8dCr.js",
+      "sha256_full_response": "c3cf81e87cb8867b3dabe5d91f8a292374e4547f41cdc94eb9b9bbcee4ac1fc7",
+      "sha256_excerpt": "d5402a8a86393cdf6f7eedd3ba753777a7c7499e4a35658d66983d9307de77de",
+      "note": "Only pricing transformation excerpt retained; complete bundle hash records fetched response."
+    }
+  ]
+}
