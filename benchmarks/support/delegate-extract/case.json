@@ -1,0 +1,23 @@
+{
+  "id": "delegate-extract",
+  "agentRole": "delegate",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/support-corpus",
+    "thinkingLevel": "low"
+  },
+  "prompt": "Read runs.json. For task index select the highest-attempt completed run, ignoring incomplete runs and other tasks. Return only JSON {\"changedFiles\":[],\"result\":{\"runId\":\"selected id\",\"artifact\":\"selected artifact\"}}. Do not edit or add files. Do not include other run fields, records, or commentary.",
+  "fixture": "../fixtures/extract",
+  "evaluator": {
+    "kind": "command",
+    "command": "node",
+    "args": [
+      "--experimental-strip-types",
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "timeoutMs": 120000,
+  "mutationPolicy": "forbid"
+}

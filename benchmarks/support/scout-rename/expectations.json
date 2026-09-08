@@ -1,0 +1,7 @@
+{
+  "kind": "scout",
+  "discoveries": [
+    { "path": "src/shared/atomic-json.ts", "symbol": "createAtomicJsonWriter", "anchor": "const retryRenameErrors = options.retryRenameErrors" },
+    { "path": "src/shared/atomic-json.ts", "symbol": "renameWithRetry", "anchor": "if (delayMs === undefined || !isRetryableRenameError(error)) throw error;" }
+  ]
+}

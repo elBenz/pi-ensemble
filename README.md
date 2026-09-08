@@ -147,6 +147,8 @@ Recorded historical cost, captured website-adjusted cost, and independently curr
 
 For host-side validation, use `evaluator.kind: "command"` with `command`, optional `args`, `expectations`, and `timeoutMs`. `{input}`, `{workspace}`, and `{caseDir}` tokens resolve after candidate exit; the same input and workspace paths are exposed as `PI_BENCHMARK_EVALUATOR_INPUT` and `PI_BENCHMARK_WORKSPACE`. Evaluator input JSON contains `candidateOutput`, `workspace`, and `expectations`. Commands are trusted case configuration and run with operator permissions.
 
+The [support Agent role corpus](benchmarks/support/README.md) provides nine source-checkout cases for scout, delegate, and researcher: one screening plus two additional finalist cases per role, with host-only evaluators and offline regression tests. Case Routes are intentionally unconfigured; this does not authorize paid screening.
+
 A complete historical case lives at `benchmarks/historical-mission-lock/case.json`. It replays the source immediately before the later fix; its host-only evaluator preserves known lock-collision behavior and adds an unseen Windows edge case.
 
 ### Replacing `pi-subagents`

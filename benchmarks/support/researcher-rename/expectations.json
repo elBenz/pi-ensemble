@@ -1,0 +1,24 @@
+{
+  "kind": "researcher",
+  "claims": [
+    {
+      "id": "retry-codes",
+      "value": [
+        "EACCES",
+        "EBUSY",
+        "EPERM"
+      ],
+      "path": "src/shared/atomic-json.ts",
+      "url": "https://github.com/elBenz/pi-ensemble/blob/7be3d34396336ed4e23eb5f88cae59ddc01c97f9/src/shared/atomic-json.ts",
+      "anchor": "new Set([\"EACCES\", \"EBUSY\", \"EPERM\"])"
+    },
+    {
+      "id": "default-platform",
+      "value": "win32",
+      "path": "src/shared/atomic-json.ts",
+      "url": "https://github.com/elBenz/pi-ensemble/blob/7be3d34396336ed4e23eb5f88cae59ddc01c97f9/src/shared/atomic-json.ts",
+      "anchor": "options.retryRenameErrors ?? process.platform === \"win32\""
+    }
+  ],
+  "title": "researcher-rename"
+}

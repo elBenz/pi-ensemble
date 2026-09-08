@@ -1,0 +1,20 @@
+{
+  "kind": "researcher",
+  "claims": [
+    {
+      "id": "peak-context",
+      "value": null,
+      "path": "sources/report.md",
+      "url": "https://primary.example.invalid/report/1",
+      "anchor": "Median peak context was not measured."
+    },
+    {
+      "id": "cost-basis",
+      "value": "historical",
+      "path": "sources/report.md",
+      "url": "https://primary.example.invalid/report/1",
+      "anchor": "Costs reflect historical recorded charges, not current prices."
+    }
+  ],
+  "title": "researcher-unknown"
+}

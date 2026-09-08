@@ -1,0 +1,12 @@
+{
+  "kind": "public-history-excerpt",
+  "repository": "https://github.com/elBenz/pi-ensemble",
+  "revision": "7be3d34396336ed4e23eb5f88cae59ddc01c97f9",
+  "files": [
+    {
+      "path": "src/shared/atomic-json.ts",
+      "url": "https://github.com/elBenz/pi-ensemble/blob/7be3d34396336ed4e23eb5f88cae59ddc01c97f9/src/shared/atomic-json.ts",
+      "sha256": "da81d183ebfdaf82d9cf7b7018ebca8a9d5681a3c12e890e5ce926e002c8cef3"
+    }
+  ]
+}

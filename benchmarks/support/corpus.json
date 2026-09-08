@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "support-roles-v1",
+  "issue": "https://github.com/elBenz/pi-ensemble/issues/14",
+  "historicalSource": {
+    "repository": "https://github.com/elBenz/pi-ensemble",
+    "revision": "7be3d34396336ed4e23eb5f88cae59ddc01c97f9",
+    "fixture": "fixtures/rename",
+    "laterFix": "639162e3de08a15b3e3ca439cf38dea10c5c6865",
+    "scope": "Pinned atomic-json.ts excerpt. Delegate task is only the later fix's delay-schedule change, not its waiting implementation. Scout and researcher questions are derived from the earlier source."
+  },
+  "cases": [
+    { "role": "scout", "stage": "screening", "case": "scout-rename/case.json", "origin": "public-history", "purpose": "Retry factory and termination discovery" },
+    { "role": "scout", "stage": "finalist", "case": "scout-dispatch/case.json", "origin": "synthetic", "purpose": "Entry-point tracing with unused handler decoy" },
+    { "role": "scout", "stage": "finalist", "case": "scout-boundary/case.json", "origin": "synthetic", "purpose": "Live versus legacy symbol and bounded relevance" },
+    { "role": "delegate", "stage": "screening", "case": "delegate-rename/case.json", "origin": "public-history", "purpose": "Narrow schedule patch with exhaustion/error/cleanup regressions" },
+    { "role": "delegate", "stage": "finalist", "case": "delegate-tags/case.json", "origin": "synthetic", "purpose": "Narrow mutation with malformed input and nonmutation regressions" },
+    { "role": "delegate", "stage": "finalist", "case": "delegate-extract/case.json", "origin": "synthetic", "purpose": "Read-only result isolation and completed-attempt selection" },
+    { "role": "researcher", "stage": "screening", "case": "researcher-rename/case.json", "origin": "public-history", "purpose": "Pinned primary-source code facts and citations" },
+    { "role": "researcher", "stage": "finalist", "case": "researcher-version/case.json", "origin": "synthetic", "purpose": "Version-scoped primary evidence versus outdated secondary claims" },
+    { "role": "researcher", "stage": "finalist", "case": "researcher-unknown/case.json", "origin": "synthetic", "purpose": "Unknown metrics and historical cost provenance" }
+  ]
+}

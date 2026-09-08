@@ -1,0 +1,7 @@
+{
+  "kind": "delegate",
+  "fixture": "../fixtures/rename",
+  "changedFiles": ["src/shared/atomic-json.ts"],
+  "result": "updated",
+  "behavior": "rename"
+}

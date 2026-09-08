@@ -1,0 +1,23 @@
+{
+  "id": "researcher-version",
+  "agentRole": "researcher",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/support-corpus",
+    "thinkingLevel": "low"
+  },
+  "prompt": "For Widget version 2 only, answer retry-limit (integer number of retries) and retry-method (method string). Distinguish the versioned primary source from outdated/secondary claims. Use only supplied primary documents; no network or edits.\n\nUse the researcher Markdown brief below, replacing placeholders with source-backed answers. Answer contains exactly one labelled sentence per claim in Findings order: `<id>: <value>.` Display arrays comma-space separated, null as unknown, and strings/numbers directly. Findings is one JSON block with claims entries containing exactly id, value, citations; citations contain exactly path, url, quote. Quotes must be verbatim supporting excerpts, at most 500 characters each. Gaps is `None.` unless values are null, then `Unknown: <comma-space separated null claim ids>.` Sources lists each cited URL once, in first-citation order, as `- <url>`. No extra claims or prose. Synthetic .invalid URLs are exercise-only sources, not real external evidence.\n\n# Research: researcher-version\n\n## Answer\n<id>: <value>. <id>: <value>.\n\n## Findings\n```json\n{\"claims\":[{\"id\":\"question id\",\"value\":\"answer with requested type\",\"citations\":[{\"path\":\"source path\",\"url\":\"primary source URL\",\"quote\":\"supporting excerpt\"}]}]}\n```\n\n## Gaps\nNone.\n\n## Sources\n- <url>",
+  "fixture": "../fixtures/version",
+  "evaluator": {
+    "kind": "command",
+    "command": "node",
+    "args": [
+      "--experimental-strip-types",
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "timeoutMs": 120000,
+  "mutationPolicy": "forbid"
+}

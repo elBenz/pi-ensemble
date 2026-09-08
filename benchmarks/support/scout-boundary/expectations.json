@@ -1,0 +1,10 @@
+{
+  "kind": "scout",
+  "discoveries": [
+    {
+      "path": "src/current/config.mjs",
+      "symbol": "resolveConfig",
+      "anchor": "local ?? shared ?? \"default\""
+    }
+  ]
+}

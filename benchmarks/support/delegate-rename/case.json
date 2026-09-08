@@ -1,0 +1,10 @@
+{
+  "id": "delegate-rename",
+  "agentRole": "delegate",
+  "route": { "modelTier": "UNCONFIGURED", "model": "unconfigured/support-corpus", "thinkingLevel": "low" },
+  "prompt": "Narrow historical maintenance subtask: in src/shared/atomic-json.ts extend the default Windows rename retry delays to 10,25,50,100,200,500,1000,2000,4000 ms. Preserve custom delays, disabled retries, non-retryable error propagation and temporary-file cleanup. Change only that source file; do not refactor waiting or add files. Return only JSON {\"changedFiles\":[\"relative changed path\"],\"result\":\"updated\"}. This is only the bounded delay-schedule part of the maintenance task.",
+  "fixture": "../fixtures/rename",
+  "evaluator": { "kind": "command", "command": "node", "args": ["--experimental-strip-types", "{caseDir}/../evaluator.mjs", "{caseDir}/expectations.json"], "timeoutMs": 10000 },
+  "timeoutMs": 120000,
+  "mutationPolicy": "require"
+}

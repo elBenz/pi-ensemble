@@ -1,0 +1,10 @@
+{
+  "kind": "delegate",
+  "fixture": "../fixtures/extract",
+  "changedFiles": [],
+  "result": {
+    "runId": "r2",
+    "artifact": "out/b.json"
+  },
+  "behavior": "extract"
+}

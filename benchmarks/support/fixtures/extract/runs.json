@@ -1,0 +1,32 @@
+{
+  "runs": [
+    {
+      "runId": "r1",
+      "task": "index",
+      "attempt": 1,
+      "status": "completed",
+      "artifact": "out/a.json"
+    },
+    {
+      "runId": "r2",
+      "task": "index",
+      "attempt": 2,
+      "status": "completed",
+      "artifact": "out/b.json"
+    },
+    {
+      "runId": "r3",
+      "task": "index",
+      "attempt": 3,
+      "status": "running",
+      "artifact": "out/c.json"
+    },
+    {
+      "runId": "r4",
+      "task": "other",
+      "attempt": 9,
+      "status": "completed",
+      "artifact": "out/d.json"
+    }
+  ]
+}

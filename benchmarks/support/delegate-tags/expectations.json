@@ -1,0 +1,9 @@
+{
+  "kind": "delegate",
+  "fixture": "../fixtures/tags",
+  "changedFiles": [
+    "tags.mjs"
+  ],
+  "result": "updated",
+  "behavior": "tags"
+}

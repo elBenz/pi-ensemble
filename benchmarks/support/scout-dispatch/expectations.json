@@ -1,0 +1,15 @@
+{
+  "kind": "scout",
+  "discoveries": [
+    {
+      "path": "src/routes.mjs",
+      "symbol": "routes",
+      "anchor": "inspect: inspectJob"
+    },
+    {
+      "path": "src/inspect.mjs",
+      "symbol": "inspectJob",
+      "anchor": "return job.state"
+    }
+  ]
+}

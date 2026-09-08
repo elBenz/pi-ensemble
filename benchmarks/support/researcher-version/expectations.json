@@ -1,0 +1,20 @@
+{
+  "kind": "researcher",
+  "claims": [
+    {
+      "id": "retry-limit",
+      "value": 4,
+      "path": "sources/v2.md",
+      "url": "https://primary.example.invalid/widget/v2",
+      "anchor": "Version 2 permits at most 4 retries."
+    },
+    {
+      "id": "retry-method",
+      "value": "GET",
+      "path": "sources/v2.md",
+      "url": "https://primary.example.invalid/widget/v2",
+      "anchor": "Only GET is retryable."
+    }
+  ],
+  "title": "researcher-version"
+}

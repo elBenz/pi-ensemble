@@ -1,0 +1,23 @@
+{
+  "id": "scout-rename",
+  "agentRole": "scout",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/support-corpus",
+    "thinkingLevel": "low"
+  },
+  "prompt": "Read-only discovery: locate the factory selecting Windows rename retries and the function enforcing retry exhaustion/error propagation.\n\nUse the scout Markdown handoff below, replacing placeholders with findings. Change seam lists each discovery as `- path:startLine-endLine \u2014 symbol` in Evidence order; use exact 1-based source line ranges. Evidence is one JSON block with discoveries entries containing exactly path, symbol, quote, startLine, endLine. Quotes must be verbatim relevant excerpts, at most 500 characters each. No other discoveries or prose. Keep Constraints and Open questions exactly as shown; these cases have fully specified questions.\n\n# Code Context\n\n## Change seam\n- <path>:<startLine>-<endLine> \u2014 <symbol>\n\n## Constraints\nRead-only; no file changes.\n\n## Evidence\n```json\n{\"discoveries\":[{\"path\":\"relative path\",\"symbol\":\"symbol name\",\"quote\":\"supporting excerpt\",\"startLine\":1,\"endLine\":1}]}\n```\n\n## Open questions\nNone.",
+  "fixture": "../fixtures/rename",
+  "evaluator": {
+    "kind": "command",
+    "command": "node",
+    "args": [
+      "--experimental-strip-types",
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "timeoutMs": 120000,
+  "mutationPolicy": "forbid"
+}
