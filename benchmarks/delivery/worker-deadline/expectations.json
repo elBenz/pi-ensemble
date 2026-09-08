@@ -1,0 +1,6 @@
+{
+  "role": "worker",
+  "behavior": "deadline",
+  "fixture": "../fixtures/deadline",
+  "target": "deadline.mjs"
+}

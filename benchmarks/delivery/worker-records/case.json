@@ -1,0 +1,22 @@
+{
+  "id": "worker-records",
+  "agentRole": "worker",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/delivery-corpus",
+    "thinkingLevel": "low"
+  },
+  "prompt": "completedArtifacts accepts an array of non-array objects. Every record (including running records) must have a nonblank string id and state exactly running or completed. Completed records also require a nonblank string artifact. Reject invalid outer input or any invalid member with TypeError, without silently filtering or coercion. Return completed artifacts in input order, preserving strings and never mutating inputs. Extra fields and running artifacts are ignored. Implement this contract in records.mjs. Change only that file. Run node --test focused.test.mjs. Return only JSON {\"changedFiles\":[\"records.mjs\"],\"summary\":\"brief implementation summary\"}.",
+  "fixture": "../fixtures/records",
+  "evaluator": {
+    "kind": "command",
+    "command": "node",
+    "args": [
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "timeoutMs": 120000,
+  "mutationPolicy": "require"
+}

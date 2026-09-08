@@ -1,0 +1,8 @@
+{
+  "role": "reviewer",
+  "behavior": "index",
+  "fixture": "../fixtures/index",
+  "target": "index.mjs",
+  "defect": true,
+  "severity": "high"
+}

@@ -1,0 +1,8 @@
+{
+  "role": "reviewer",
+  "behavior": "queue",
+  "fixture": "../fixtures/queue",
+  "target": "queue.mjs",
+  "defect": true,
+  "severity": "critical"
+}

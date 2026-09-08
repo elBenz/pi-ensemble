@@ -473,7 +473,11 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 		const before = workspaceSnapshot(workspace);
 		const sessionPath = path.join(outputDir, "session.jsonl");
 		if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(benchmarkCase.agentRole)) throw new Error(`Unknown Agent role: ${benchmarkCase.agentRole}`);
-		const roleSource = path.join(PACKAGE_ROOT, "agents", `${benchmarkCase.agentRole}.md`);
+		// Watchdog is a runtime responsibility, not an installed agent. Benchmark it
+		// with a frozen read-only surrogate without changing production discovery.
+		const roleSource = benchmarkCase.agentRole === "watchdog"
+			? path.join(PACKAGE_ROOT, "docs/benchmark-prompts/watchdog.md")
+			: path.join(PACKAGE_ROOT, "agents", `${benchmarkCase.agentRole}.md`);
 		if (!fs.existsSync(roleSource)) throw new Error(`Unknown Agent role: ${benchmarkCase.agentRole}`);
 		const artifactRolePromptPath = path.join(outputDir, "agent-role.md");
 		fs.copyFileSync(roleSource, artifactRolePromptPath);

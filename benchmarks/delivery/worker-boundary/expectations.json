@@ -1,0 +1,6 @@
+{
+  "role": "worker",
+  "behavior": "boundary",
+  "fixture": "../fixtures/boundary",
+  "target": "boundary.mjs"
+}

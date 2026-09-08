@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/elBenz/pi-ensemble",
+  "historicalSeeds": [
+    {
+      "fixture": "fixtures/deadline",
+      "origin": "history-derived-reproduction",
+      "sources": [
+        {
+          "revision": "4303372263e9fefba48548608f170f00ee8e5b80",
+          "path": "src/runs/foreground/subagent-executor.ts",
+          "url": "https://github.com/elBenz/pi-ensemble/blob/4303372263e9fefba48548608f170f00ee8e5b80/src/runs/foreground/subagent-executor.ts",
+          "sha256": "f0802fd95d47a548fd642f989884c8c6caee193fbc3d73a51c6f6f7039953a05"
+        },
+        {
+          "revision": "cc5f0bdabe61ef7966fa454290f94cd1376aee49",
+          "path": "src/runs/foreground/subagent-executor.ts",
+          "url": "https://github.com/elBenz/pi-ensemble/blob/cc5f0bdabe61ef7966fa454290f94cd1376aee49/src/runs/foreground/subagent-executor.ts",
+          "sha256": "b2a26a92301a068f1ee43548fcc0dc92ab6f9d192b48bd0c73998bf825a2f76e"
+        }
+      ],
+      "adaptation": "Reduced applySingleAgentLaunchDefaults to launchOptions with explicit injected clock and parent deadline. Preserves historical timeout/maxRuntime/default precedence and missing parent fallback. Omits executor plumbing, workflow metadata, and unrelated defaults."
+    },
+    {
+      "fixture": "fixtures/index",
+      "origin": "history-derived-reproduction",
+      "sources": [
+        {
+          "revision": "f4ee3a87011232068057c1a8c15fc7508117f5a2",
+          "path": "src/runs/background/async-status.ts",
+          "url": "https://github.com/elBenz/pi-ensemble/blob/f4ee3a87011232068057c1a8c15fc7508117f5a2/src/runs/background/async-status.ts",
+          "sha256": "ae7e086b45f46024efbd415b2c6c35dcbe6aa3bbb9be8043620461467bda6d3e"
+        },
+        {
+          "revision": "50da8cf54b1ebdb37cdedb90e64e9d90e318c1f1",
+          "path": "src/runs/background/async-status.ts",
+          "url": "https://github.com/elBenz/pi-ensemble/blob/50da8cf54b1ebdb37cdedb90e64e9d90e318c1f1/src/runs/background/async-status.ts",
+          "sha256": "542c6879b5cb1ade8eae2ddb7759c39634103fb5226bd7e4ef91107b0d5f3b52"
+        }
+      ],
+      "adaptation": "Reduced listAsyncRuns to listRuns over an injected exact/recent/scanAll storage interface. Reproduces unbounded default history scan versus bounded recent index, preserving exact lookup and session isolation. Not the full filesystem implementation or full historical patch."
+    },
+    {
+      "fixture": "fixtures/guard",
+      "origin": "history-derived-reproduction",
+      "sources": [
+        {
+          "revision": "37bc262061d3a7eda77b70ca5f55abee08a28776",
+          "path": "src/runs/shared/completion-guard.ts",
+          "url": "https://github.com/elBenz/pi-ensemble/blob/37bc262061d3a7eda77b70ca5f55abee08a28776/src/runs/shared/completion-guard.ts",
+          "sha256": "da8234f44b3128a45c894f1b7604b00e2de07ada2dcb7cecad74bb81b12147c8"
+        },
+        {
+          "revision": "840b51472d5eb858b9d706301bd1e6dc709e87dc",
+          "path": "src/runs/shared/completion-guard.ts",
+          "url": "https://github.com/elBenz/pi-ensemble/blob/840b51472d5eb858b9d706301bd1e6dc709e87dc/src/runs/shared/completion-guard.ts",
+          "sha256": "90c6ed7d7f2d212aa37b9d60a183de8f4a3aa0ea5577ea22efd490a9697cc2bb"
+        }
+      ],
+      "adaptation": "Reduces task-intent classification to upstream-validated booleans applyChanges and suggestedFix. Reproduces suggested-fix drafting false positives and read-only tool exemption; does not benchmark original natural-language regex classification."
+    }
+  ],
+  "syntheticNotes": {
+    "boundary": "Synthetic replay-barrier regression informed by public execution-boundary fix 76c638548371624dfa72e976bf6603af7351e763; not a replay or source excerpt.",
+    "records": "Invented completion-record schema and malformed-input regression.",
+    "queue": "Invented per-key queue with missing ownership and stale-cleanup schedules; no historical provenance claimed.",
+    "clean": "Synthetic repaired reduced completion guard with advisory completion report; clean control for unnecessary blocking."
+  },
+  "fixtureFiles": [
+    {
+      "path": "fixtures/boundary/boundary.mjs",
+      "sha256": "f043bed140133be75b350ec2845535e4187b3a89ed6720fc42b31a2c3ce741e0"
+    },
+    {
+      "path": "fixtures/boundary/focused.test.mjs",
+      "sha256": "7abf1324caa7570069f754a2d92683e11a0c6cfada9c7ee39508ce7ca17cdeff"
+    },
+    {
+      "path": "fixtures/clean/completion.json",
+      "sha256": "0677cb3bfd705c92a673d9b8e305b3d343441a6df0b0f960c40cad0eb9200f34"
+    },
+    {
+      "path": "fixtures/clean/focused.test.mjs",
+      "sha256": "f0c17c5e40ca646c1651923236c0746ffa149a204b6cc742be98b46fdc236c56"
+    },
+    {
+      "path": "fixtures/clean/guard.mjs",
+      "sha256": "36b8a0ccfaed6fa7fa053dbee5f066bf00d86d062c9271214ef12d9b1cd843de"
+    },
+    {
+      "path": "fixtures/deadline/deadline.mjs",
+      "sha256": "1141dcc96cf05bc05034f44217b56551b0e293f00d482d7ae81aea30d35ba60a"
+    },
+    {
+      "path": "fixtures/deadline/focused.test.mjs",
+      "sha256": "d59dca058c6425ba055a8b09344e3dc21c8501faaa3f514a6a556b27d054f4b4"
+    },
+    {
+      "path": "fixtures/guard/completion.json",
+      "sha256": "0677cb3bfd705c92a673d9b8e305b3d343441a6df0b0f960c40cad0eb9200f34"
+    },
+    {
+      "path": "fixtures/guard/focused.test.mjs",
+      "sha256": "f0c17c5e40ca646c1651923236c0746ffa149a204b6cc742be98b46fdc236c56"
+    },
+    {
+      "path": "fixtures/guard/guard.mjs",
+      "sha256": "cdf66206ee15a35dc111be9f8cf42926c6c694751fdf5e0fc09c34bda33cdc73"
+    },
+    {
+      "path": "fixtures/index/focused.test.mjs",
+      "sha256": "29cdfa316d5e9fefc9cbe31f3e77ab14385b669363bbdc4c65160a3167b9e23e"
+    },
+    {
+      "path": "fixtures/index/index.mjs",
+      "sha256": "6308d0b305064ff4e0ea9127c829938a01d7a188c1f82f2e4d0fab648257938e"
+    },
+    {
+      "path": "fixtures/queue/completion.json",
+      "sha256": "369143fdee28b196f9877644c8935f05e2774c1ed5e1fb2302440d23b9eb8b28"
+    },
+    {
+      "path": "fixtures/queue/focused.test.mjs",
+      "sha256": "d7854803e18ff0f6453be306fc1ec20cdad197810295ab7a0863c0b8cd679fac"
+    },
+    {
+      "path": "fixtures/queue/queue.mjs",
+      "sha256": "8fcac63c4ff6fb5f7ed61d7eb2af022fbddce4eeb1760713c1154690bbb16b9f"
+    },
+    {
+      "path": "fixtures/records/focused.test.mjs",
+      "sha256": "2457e045d584d513574a2bdafc593ec356ce34cd3d6b781a10553479258f55cf"
+    },
+    {
+      "path": "fixtures/records/records.mjs",
+      "sha256": "4482a8a543d8acacf5e3959e733a8248d75772ea7c9c38f8496b4a42b75ea321"
+    }
+  ]
+}

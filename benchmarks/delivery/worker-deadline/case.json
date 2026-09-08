@@ -1,0 +1,22 @@
+{
+  "id": "worker-deadline",
+  "agentRole": "worker",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/delivery-corpus",
+    "thinkingLevel": "low"
+  },
+  "prompt": "Fix deadline.mjs. launchOptions must inherit remaining parent workflow time (minimum 1ms) only when child timeoutMs, child maxRuntimeMs, and agent defaultTimeoutMs are all absent. Preserve explicit zero and unrelated parameters; do not mutate arguments. No parent deadline means no inherited timeout. Change only deadline.mjs. Run node --test focused.test.mjs. Return only JSON {\"changedFiles\":[\"deadline.mjs\"],\"summary\":\"brief implementation summary\"}.",
+  "fixture": "../fixtures/deadline",
+  "evaluator": {
+    "kind": "command",
+    "command": "node",
+    "args": [
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "timeoutMs": 120000,
+  "mutationPolicy": "require"
+}

@@ -1,0 +1,22 @@
+{
+  "id": "worker-boundary",
+  "agentRole": "worker",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/delivery-corpus",
+    "thinkingLevel": "low"
+  },
+  "prompt": "execute(primary, fallback) invokes primary once. Fallback is allowed exactly when its result has ok false, retryable true, and mutationAttempted false. An attempted mutation is a replay barrier even if the attempt failed. Return the chosen result unchanged and propagate thrown/rejected errors without replay. Inputs are functions returning validated results with boolean fields. Implement this contract in boundary.mjs. Change only that file. Run node --test focused.test.mjs. Return only JSON {\"changedFiles\":[\"boundary.mjs\"],\"summary\":\"brief implementation summary\"}.",
+  "fixture": "../fixtures/boundary",
+  "evaluator": {
+    "kind": "command",
+    "command": "node",
+    "args": [
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "timeoutMs": 120000,
+  "mutationPolicy": "require"
+}

@@ -1,0 +1,9 @@
+{
+  "role": "watchdog",
+  "behavior": "guard",
+  "fixture": "../fixtures/clean",
+  "target": "guard.mjs",
+  "defect": false,
+  "severity": "high",
+  "decision": "allow"
+}

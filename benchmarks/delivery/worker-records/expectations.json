@@ -1,0 +1,6 @@
+{
+  "role": "worker",
+  "behavior": "records",
+  "fixture": "../fixtures/records",
+  "target": "records.mjs"
+}

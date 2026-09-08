@@ -1,0 +1,22 @@
+{
+  "id": "watchdog-guard",
+  "agentRole": "watchdog",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/delivery-corpus",
+    "thinkingLevel": "low"
+  },
+  "prompt": "Watchdog: assess guard.mjs and completion.json together. Decision allow only if implementation meets contract and this completion report may finish; otherwise block. Review code without editing. shouldBlock must return true exactly when applyChanges is true, tools includes edit or write, and attemptedMutation is false. suggestedFix only describes issue-drafting content, never authority to apply changes. Read-only tools exempt mutation expectations. Fields are validated upstream; do not invent malformed-request or unsupported-tool defects. Return only JSON {\"decision\":\"allow|block\",\"findings\":[{\"path\":\"source filename\",\"startLine\":1,\"endLine\":1,\"quote\":\"verbatim source span, at most 500 characters\",\"severity\":\"critical|high|medium|low\",\"explanation\":\"failure and consequence\",\"repair\":{\"oldText\":\"unique source span\",\"newText\":\"suggested replacement\"}}]}. No edits. Include only material defects (empty findings if none). Severity: critical = unsafe duplicate side effects or concurrent same-key mutation; high = unbounded resource use, wrong completion acceptance, or rejected valid completion; medium = malformed input mishandling; low = cosmetic. Suggest narrowly scoped executable repairs, not an entire rewritten file; advice is tested host-side against focused and unseen regressions. No extra fields or prose.",
+  "fixture": "../fixtures/guard",
+  "evaluator": {
+    "kind": "command",
+    "command": "node",
+    "args": [
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "timeoutMs": 120000,
+  "mutationPolicy": "forbid"
+}

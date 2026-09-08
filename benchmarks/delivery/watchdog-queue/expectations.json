@@ -1,0 +1,9 @@
+{
+  "role": "watchdog",
+  "behavior": "queue",
+  "fixture": "../fixtures/queue",
+  "target": "queue.mjs",
+  "defect": true,
+  "severity": "critical",
+  "decision": "block"
+}

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "delivery-review-v1",
+  "issue": "https://github.com/elBenz/pi-ensemble/issues/15",
+  "cases": [
+    {
+      "role": "worker",
+      "stage": "screening",
+      "case": "worker-deadline/case.json",
+      "origin": "history-derived-reproduction"
+    },
+    {
+      "role": "worker",
+      "stage": "finalist",
+      "case": "worker-boundary/case.json",
+      "origin": "synthetic"
+    },
+    {
+      "role": "worker",
+      "stage": "finalist",
+      "case": "worker-records/case.json",
+      "origin": "synthetic"
+    },
+    {
+      "role": "reviewer",
+      "stage": "screening",
+      "case": "reviewer-index/case.json",
+      "origin": "history-derived-reproduction"
+    },
+    {
+      "role": "reviewer",
+      "stage": "finalist",
+      "case": "reviewer-queue/case.json",
+      "origin": "synthetic"
+    },
+    {
+      "role": "reviewer",
+      "stage": "finalist",
+      "case": "reviewer-records/case.json",
+      "origin": "synthetic"
+    },
+    {
+      "role": "watchdog",
+      "stage": "screening",
+      "case": "watchdog-guard/case.json",
+      "origin": "history-derived-reproduction"
+    },
+    {
+      "role": "watchdog",
+      "stage": "finalist",
+      "case": "watchdog-queue/case.json",
+      "origin": "synthetic"
+    },
+    {
+      "role": "watchdog",
+      "stage": "finalist",
+      "case": "watchdog-clean/case.json",
+      "origin": "synthetic"
+    }
+  ]
+}

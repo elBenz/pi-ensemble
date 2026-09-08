@@ -1,0 +1,9 @@
+{
+  "role": "watchdog",
+  "behavior": "guard",
+  "fixture": "../fixtures/guard",
+  "target": "guard.mjs",
+  "defect": true,
+  "severity": "high",
+  "decision": "block"
+}

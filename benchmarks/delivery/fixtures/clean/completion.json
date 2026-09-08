@@ -1,0 +1,10 @@
+{
+  "applyChanges": false,
+  "suggestedFix": true,
+  "tools": [
+    "read",
+    "edit"
+  ],
+  "attemptedMutation": false,
+  "output": "Issue draft describing a suggested fix; no source changes requested."
+}

@@ -1,0 +1,22 @@
+{
+  "id": "reviewer-queue",
+  "agentRole": "reviewer",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/delivery-corpus",
+    "thinkingLevel": "low"
+  },
+  "prompt": "Review queue.mjs against this contract: createQueue().run(key, task) must serialize tasks for the same string key until settlement, including rejected tasks; distinct keys run independently. Return task results and propagate the original error. Settling an old task must never drop ownership of a newer queued task. All inputs are valid keys and task functions. Existing focused tests are not exhaustive. Return only JSON {\"findings\":[{\"path\":\"source filename\",\"startLine\":1,\"endLine\":1,\"quote\":\"verbatim source span, at most 500 characters\",\"severity\":\"critical|high|medium|low\",\"explanation\":\"failure and consequence\",\"repair\":{\"oldText\":\"unique source span\",\"newText\":\"suggested replacement\"}}]}. No edits. Include only material defects (empty findings if none). Severity: critical = unsafe duplicate side effects or concurrent same-key mutation; high = unbounded resource use, wrong completion acceptance, or rejected valid completion; medium = malformed input mishandling; low = cosmetic. Suggest narrowly scoped executable repairs, not an entire rewritten file; advice is tested host-side against focused and unseen regressions. No extra fields or prose.",
+  "fixture": "../fixtures/queue",
+  "evaluator": {
+    "kind": "command",
+    "command": "node",
+    "args": [
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "timeoutMs": 120000,
+  "mutationPolicy": "forbid"
+}
