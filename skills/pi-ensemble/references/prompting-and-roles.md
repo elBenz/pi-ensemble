@@ -8,10 +8,10 @@ Parent extensions may register a session-scoped, out-of-band ceiling through `pi
 
 ## When to Use
 
-- **Complex work orchestration**: use Fable mode as the default parent-agent loop for complex work. Complex means the task has multiple moving parts, unclear acceptance, cross-cutting code, meaningful user-visible impact, expensive or irreversible validation, broad review surface, or the user asks for orchestration. Lightweight one-off delegation can stay lightweight.
+- **Complex work orchestration**: use Fable mode when cross-cutting changes, uncertain acceptance, multiple systems, or costly validation benefit from explicit coordination. A small user-visible change alone does not require the full workflow. Scale child count and phases to independent work and risk; direct work or one-off delegation can stay lightweight.
 - **Advisory review**: use fresh-context `reviewer` agents for adversarial code review, or fork to `oracle` when inherited decisions and drift matter
-- **Implementation handoff**: have `oracle` advise, then `worker` implement only after an approved direction
-- **Recon and planning**: use `scout`, then write a plan when needed
+- **Implementation handoff**: send an authorized, well-scoped task directly to `worker`. Use `oracle` when a material design choice or consistency concern needs advice; reuse direction already approved in the request or context.
+- **Recon and planning**: inspect cheap local facts directly; use `scout` for substantial independent recon, then write a plan when useful
 - **Parallel exploration**: run multiple non-conflicting tasks concurrently
 - **Regular skill specialists**: when discovery shows proactive skill subagent suggestions and the current work is broad enough, launch a small fresh-context fanout that asks one subagent per relevant regularly used skill to apply that skill's perspective to the task
 - **Long-running work**: launch async/background runs and inspect them later. For mutation-capable work, bound the delivery slice and elapsed runtime, then request checkpoints after active tool work returns. Reserve hard turn and tool-call caps for explicitly read-only children.
@@ -93,11 +93,11 @@ Use this when the question needs both external evidence and local implications. 
 
 ### Gather-context-and-clarify technique
 
-Use this at the start of non-trivial work. Launch `scout` for local context and `researcher` only when external docs, recent sources, ecosystem context, or primary evidence would materially improve understanding. Ask children for concise findings plus remaining clarification questions. Then synthesize what is known and use `interview` to ask the unresolved questions needed for shared understanding before planning or implementing.
+Use this when unresolved information could materially change the outcome. Inspect available evidence first; delegate substantial local recon to `scout` and external source work to `researcher` only when useful. Reuse supplied answers and settled decisions. After synthesis, ask only remaining material questions, using `interview` when available or ordinary chat otherwise. Skip the interview when no blocking question remains, and continue independent authorized work while awaiting answers.
 
 ### Parallel cleanup technique
 
-Use this after implementation when the user wants cleanup review or when a final pass would reduce AI-slop. Launch two fresh-context `reviewer` tasks with `output: false` and `progress: false`: one deslop pass and one verbosity pass. If the `deslop` or `verbosity-cleaner` skills are available, pass the relevant skill to that reviewer; otherwise inline the criteria. Both reviewers are review-only and should flag concrete issues with severity, file/line references, and smallest safe fixes. Phrase the constraint as “Do not modify project/source files; returning findings through the configured output artifact is allowed” when you use `output` or `outputMode: "file-only"`. The parent decides what to apply and asks before making changes unless cleanup was already authorized.
+Use this after implementation when the user wants cleanup review or when a final pass would reduce AI-slop. For a broad cleanup surface, launch two fresh-context `reviewer` tasks with `output: false` and `progress: false`: one deslop pass and one verbosity pass. For a small change, use one focused reviewer or inspect directly; use the same criteria without compulsory fanout. If the `deslop` or `verbosity-cleaner` skills are available, pass the relevant skill to that reviewer; otherwise inline the criteria. Both reviewers are review-only and should flag concrete issues with severity, file/line references, and smallest safe fixes. Phrase the constraint as “Do not modify project/source files; returning findings through the configured output artifact is allowed” when you use `output` or `outputMode: "file-only"`. The parent decides what to apply and asks before making changes unless cleanup was already authorized.
 
 ### Staged fix orchestration technique
 
