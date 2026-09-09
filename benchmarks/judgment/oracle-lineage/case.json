@@ -1,0 +1,23 @@
+{
+  "id": "oracle-lineage",
+  "agentRole": "oracle",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/judgment-corpus",
+    "thinkingLevel": "medium"
+  },
+  "fixture": "../fixtures/lineage",
+  "timeoutMs": 120000,
+  "mutationPolicy": "forbid",
+  "evaluator": {
+    "kind": "command",
+    "requireStructuredVerdict": true,
+    "command": "node",
+    "args": [
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "prompt": "Read facts.md. Advise on context continuation and requested scope change; do not act. Return only JSON with authority, lineage, drift each {decision,quote}; recommendation {decision,certainty,quote}; tradeoffs array of {option,benefit,risk,quote}. Quotes are verbatim facts.md excerpts (max 500 characters). No extra keys or unsupported claims. Select authority decision from ask-owner/follow-child; lineage from fresh-with-handoff/fork/continue; drift from verify-source/trust-child; recommendation from handoff-and-ask/edit-settings/continue; certainty from conditional/certain. Compare both options fork and fresh: benefit from history/headroom, risk from over-limit/missing-context. Choose each option's actual benefit and risk, not an invented guarantee."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "parent",
+  "behavior": "queue",
+  "fixture": "../fixtures/queue"
+}

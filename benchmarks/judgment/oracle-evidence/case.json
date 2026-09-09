@@ -1,0 +1,23 @@
+{
+  "id": "oracle-evidence",
+  "agentRole": "oracle",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/judgment-corpus",
+    "thinkingLevel": "medium"
+  },
+  "fixture": "../fixtures/evidence",
+  "timeoutMs": 120000,
+  "mutationPolicy": "forbid",
+  "evaluator": {
+    "kind": "command",
+    "requireStructuredVerdict": true,
+    "command": "node",
+    "args": [
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "prompt": "Read facts.md and advise only. Return JSON with authority, lineage, drift each {decision,quote}, recommendation {decision,certainty,quote}, and tradeoffs array {option,benefit,risk,quote}. Quotes must be verbatim facts.md excerpts (max 500 chars); no extra claims or keys. Select decisions and pair each alternative with actual benefit/risk: authority: request-approval/launch-now; lineage: retain-provenance/trust-child; drift: keep-experiments-separate/tune-prompts; recommendation: measure-before-routing/select-strong; certainty: unknown/certain. Compare cheap and strong; benefit: lower-cost/higher-score; risk: unknown-quality/unknown-context."
+}

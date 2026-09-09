@@ -1,0 +1,36 @@
+{
+  "kind": "oracle",
+  "decisions": {
+    "authority": {
+      "decision": "request-approval",
+      "anchor": "Owner authorizes offline analysis only, not paid runs or settings changes."
+    },
+    "lineage": {
+      "decision": "retain-provenance",
+      "anchor": "Report is historical; current adapter peak context is unmeasured."
+    },
+    "drift": {
+      "decision": "keep-experiments-separate",
+      "anchor": "Changing prompts during model comparison confounds route evidence."
+    },
+    "recommendation": {
+      "decision": "measure-before-routing",
+      "anchor": "No route recommendation until current usage and context evidence are measured under approval.",
+      "certainty": "unknown"
+    }
+  },
+  "tradeoffs": [
+    {
+      "option": "cheap",
+      "benefit": "lower-cost",
+      "risk": "unknown-quality",
+      "anchor": "Cheap route lowers historical cost but local quality is unknown."
+    },
+    {
+      "option": "strong",
+      "benefit": "higher-score",
+      "risk": "unknown-context",
+      "anchor": "Strong route has higher external score but local context is unknown."
+    }
+  ]
+}

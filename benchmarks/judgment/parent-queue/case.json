@@ -1,0 +1,65 @@
+{
+  "id": "parent-queue",
+  "agentRole": "parent",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/judgment-corpus",
+    "thinkingLevel": "medium"
+  },
+  "fixture": "../fixtures/queue",
+  "timeoutMs": 120000,
+  "mutationPolicy": "require",
+  "evaluator": {
+    "kind": "command",
+    "requireStructuredVerdict": true,
+    "command": "node",
+    "args": [
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "prompt": "Read TASK.md and complete its workflow. Select only necessary roles from the protocol. Integrate actual artifact, obtain independent review, verify acceptance, then finish with JSON {\"action\":\"finish\",\"certainty\":\"verified\",\"accepted\":true}. Do not claim success on failed evidence.",
+  "workflow": {
+    "maxDelegations": 3,
+    "maxParentTurns": 6,
+    "children": [
+      {
+        "role": "worker",
+        "route": {
+          "modelTier": "UNCONFIGURED",
+          "model": "unconfigured/judgment-corpus",
+          "thinkingLevel": "medium"
+        },
+        "prompt": "Read TASK.md. Implement only proposed.mjs; never task.mjs or acceptance.mjs. Return artifact and checks.",
+        "mutationPolicy": "require"
+      },
+      {
+        "role": "reviewer",
+        "route": {
+          "modelTier": "UNCONFIGURED",
+          "model": "unconfigured/judgment-corpus",
+          "thinkingLevel": "medium"
+        },
+        "prompt": "Read TASK.md and task.mjs. Independently review behavior, run checks, report defects. No file changes. Return only JSON {\"findings\":[{\"severity\":\"critical|major|minor\",\"path\":\"relative path\",\"message\":\"evidence-backed defect\"}]}; empty findings only if none found.",
+        "mutationPolicy": "forbid"
+      },
+      {
+        "role": "scout",
+        "route": {
+          "modelTier": "UNCONFIGURED",
+          "model": "unconfigured/judgment-corpus",
+          "thinkingLevel": "medium"
+        },
+        "prompt": "Read-only discovery. Return precise seam.",
+        "mutationPolicy": "forbid"
+      }
+    ],
+    "verification": {
+      "command": "node",
+      "args": [
+        "acceptance.mjs"
+      ]
+    }
+  }
+}

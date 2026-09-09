@@ -98,7 +98,7 @@ export async function runBenchmarkPlan(options: RunBenchmarkPlanOptions): Promis
 			break;
 		}
 		const runOutputDir = path.join(outputDir, `run-${String(index + 1).padStart(3, "0")}`);
-		const run = await runBenchmarkCase({ casePath: launch.casePath, outputDir: runOutputDir, env: options.env });
+		const run = await runBenchmarkCase({ casePath: launch.casePath, outputDir: runOutputDir, env: options.env, launchBudgetUsd: spend.hardLimit - cumulativeSpend });
 		const normalized = JSON.parse(fs.readFileSync(run.resultPath, "utf-8")) as Record<string, unknown>;
 		const benchmarkCost = normalized.benchmarkCost as { amount: number } | null;
 		const before = cumulativeSpend;

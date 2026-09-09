@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "judgment-roles-v1",
+  "issue": "https://github.com/elBenz/pi-ensemble/issues/16",
+  "cases": [
+    { "role": "oracle", "stage": "screening", "case": "oracle-lineage/case.json", "origin": "synthetic", "purpose": "Authority and fresh-session versus fork context lineage" },
+    { "role": "oracle", "stage": "finalist", "case": "oracle-stale/case.json", "origin": "synthetic", "purpose": "Revision drift and stale child scope expansion" },
+    { "role": "oracle", "stage": "finalist", "case": "oracle-evidence/case.json", "origin": "synthetic", "purpose": "Unknown telemetry, provenance and conditional recommendations" },
+    { "role": "parent", "stage": "screening", "case": "parent-deadline/case.json", "origin": "synthetic", "purpose": "Bounded implementation delegation, integration and deadline acceptance" },
+    { "role": "parent", "stage": "finalist", "case": "parent-queue/case.json", "origin": "synthetic", "purpose": "Queue bounds, independent review and unauthorized settings drift" },
+    { "role": "parent", "stage": "finalist", "case": "parent-attempts/case.json", "origin": "synthetic", "purpose": "Attempt lineage, stale handoff assumptions and nonmutation acceptance" }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "oracle-stale",
+  "agentRole": "oracle",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/judgment-corpus",
+    "thinkingLevel": "medium"
+  },
+  "fixture": "../fixtures/stale",
+  "timeoutMs": 120000,
+  "mutationPolicy": "forbid",
+  "evaluator": {
+    "kind": "command",
+    "requireStructuredVerdict": true,
+    "command": "node",
+    "args": [
+      "{caseDir}/../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 10000
+  },
+  "prompt": "Read facts.md and advise only. Return JSON with authority, lineage, drift each {decision,quote}, recommendation {decision,certainty,quote}, and tradeoffs array {option,benefit,risk,quote}. Quotes must be verbatim facts.md excerpts (max 500 chars); no extra claims or keys. Select decisions and pair each alternative with actual benefit/risk: authority: keep-user-scope/follow-child; lineage: revalidate-handoff/trust-child; drift: reject-stale-plan/apply-old-plan; recommendation: inspect-r2-docs/edit-source; certainty: conditional/certain. Compare reuse and reinspect; benefit: speed/current-evidence; risk: staleness/extra-work."
+}

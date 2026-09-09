@@ -149,6 +149,8 @@ For host-side validation, use `evaluator.kind: "command"` with `command`, option
 
 The [support Agent role corpus](benchmarks/support/README.md) provides nine source-checkout cases for scout, delegate, and researcher: one screening plus two additional finalist cases per role, with host-only evaluators and offline regression tests. Case Routes are intentionally unconfigured; this does not authorize paid screening.
 
+The [decision and orchestration corpus](benchmarks/judgment/README.md) adds six oracle/parent cases. Parent workflows launch actual fixed-Route Pi children, retain fresh-session/per-turn evidence, and include child spend in pre-launch budget checks. Hidden rubrics verify grounded decisions and executable integration, not claimed success. All Routes remain unconfigured; no paid screening is authorized.
+
 A complete historical case lives at `benchmarks/historical-mission-lock/case.json`. It replays the source immediately before the later fix; its host-only evaluator preserves known lock-collision behavior and adds an unseen Windows edge case.
 
 ### Replacing `pi-subagents`

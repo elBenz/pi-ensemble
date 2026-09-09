@@ -20,11 +20,18 @@ export interface BenchmarkRoute {
 
 export type BenchmarkEvaluator =
 	| { kind: "output-includes"; expected: string }
-	| { kind: "command"; command: string; args?: string[]; expectations?: unknown; timeoutMs?: number };
+	| { kind: "command"; command: string; args?: string[]; expectations?: unknown; timeoutMs?: number; requireStructuredVerdict?: boolean };
 
 export interface BenchmarkSource {
 	repository: string;
 	revision: string;
+}
+
+export interface BenchmarkWorkflow {
+	maxDelegations: number;
+	maxParentTurns: number;
+	children: Array<{ role: string; route: BenchmarkRoute; currentPricing?: BenchmarkPricing; prompt: string; mutationPolicy: MutationPolicy }>;
+	verification: { command: string; args: string[] };
 }
 
 export interface BenchmarkCase {
@@ -35,6 +42,7 @@ export interface BenchmarkCase {
 	prompt: string;
 	fixture?: string;
 	source?: BenchmarkSource;
+	workflow?: BenchmarkWorkflow;
 	evaluator: BenchmarkEvaluator;
 	timeoutMs: number;
 	mutationPolicy: MutationPolicy;
@@ -59,6 +67,8 @@ interface EvaluationResult {
 }
 
 interface TranscriptMetrics {
+	perTurn: Array<{ turn: number; contextLoad: number | null; input: number | null; output: number | null; cacheRead: number | null; cacheWrite: number | null }>;
+	unsafeContinuation: boolean;
 	cumulativeInputTokens: number | null;
 	cumulativeOutputTokens: number | null;
 	reasoningTokens: number | null;
@@ -81,6 +91,8 @@ export interface RunBenchmarkOptions {
 	casePath: string;
 	outputDir: string;
 	env?: NodeJS.ProcessEnv;
+	/** Remaining campaign budget, checked before every workflow model launch. */
+	launchBudgetUsd?: number;
 }
 
 export interface BenchmarkRunResult {
@@ -158,11 +170,14 @@ export function parseBenchmarkCase(value: unknown): BenchmarkCase {
 	} else if (evaluatorRecord.kind === "command") {
 		const args = evaluatorRecord.args;
 		if (args !== undefined && (!Array.isArray(args) || !args.every((arg) => typeof arg === "string"))) throw new Error("evaluator.args must be an array of strings.");
+		const requireStructuredVerdict = evaluatorRecord.requireStructuredVerdict;
+		if (requireStructuredVerdict !== undefined && typeof requireStructuredVerdict !== "boolean") throw new Error("evaluator.requireStructuredVerdict must be a boolean.");
 		const evaluatorTimeout = evaluatorRecord.timeoutMs;
 		if (evaluatorTimeout !== undefined && (typeof evaluatorTimeout !== "number" || !Number.isSafeInteger(evaluatorTimeout) || evaluatorTimeout <= 0)) throw new Error("evaluator.timeoutMs must be a positive integer.");
 		evaluator = {
 			kind: "command",
 			command: requiredString(evaluatorRecord.command, "evaluator.command"),
+			...(requireStructuredVerdict === undefined ? {} : { requireStructuredVerdict }),
 			...(args === undefined ? {} : { args: args as string[] }),
 			...(Object.hasOwn(evaluatorRecord, "expectations") ? { expectations: evaluatorRecord.expectations } : {}),
 			...(evaluatorTimeout === undefined ? {} : { timeoutMs: evaluatorTimeout as number }),
@@ -185,7 +200,26 @@ export function parseBenchmarkCase(value: unknown): BenchmarkCase {
 	const timeoutMs = input.timeoutMs;
 	if (typeof timeoutMs !== "number" || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error("timeoutMs must be a positive integer.");
 	if (!(["forbid", "allow", "require"] as unknown[]).includes(input.mutationPolicy)) throw new Error("mutationPolicy must be forbid, allow, or require.");
+	let workflow: BenchmarkWorkflow | undefined;
+	if (input.agentRole === "parent" && input.workflow === undefined) throw new Error("Parent Agent role requires a bounded workflow.");
+	if (input.workflow !== undefined) {
+		if (input.agentRole !== "parent") throw new Error("workflow requires parent Agent role.");
+		const w = input.workflow as BenchmarkWorkflow;
+		if (!w || !Number.isSafeInteger(w.maxDelegations) || w.maxDelegations < 1 || w.maxDelegations > 8
+			|| !Number.isSafeInteger(w.maxParentTurns) || w.maxParentTurns < 2 || w.maxParentTurns > 16
+			|| !Array.isArray(w.children) || w.children.length === 0) throw new Error("Invalid bounded workflow.");
+		const children = w.children.map((child) => {
+			if (!["worker", "scout", "reviewer", "delegate", "oracle", "researcher"].includes(child.role)) throw new Error("Invalid child role.");
+			const parsed = parseBenchmarkCase({ id: "child", agentRole: child.role, route: child.route, currentPricing: child.currentPricing, prompt: child.prompt, timeoutMs, mutationPolicy: child.mutationPolicy, evaluator: { kind: "output-includes", expected: "unused" } });
+			if (parsed.currentPricing?.computeUnit !== undefined) throw new Error("Child requires supported currentPricing.");
+			return { role: child.role, route: parsed.route, currentPricing: parsed.currentPricing, prompt: parsed.prompt, mutationPolicy: parsed.mutationPolicy };
+		});
+		if (new Set(children.map(c => c.role)).size !== children.length) throw new Error("Duplicate child role.");
+		if (!w.verification || !Array.isArray(w.verification.args) || !w.verification.args.every(a => typeof a === "string")) throw new Error("Invalid workflow verification.");
+		workflow = { maxDelegations: w.maxDelegations, maxParentTurns: w.maxParentTurns, children, verification: { command: requiredString(w.verification.command, "verification.command"), args: w.verification.args } };
+	}
 	return {
+		...(workflow ? { workflow } : {}),
 		id: requiredString(input.id, "id"),
 		agentRole: requiredString(input.agentRole, "agentRole"),
 		route: {
@@ -328,7 +362,7 @@ function repriceTranscript(metrics: TranscriptMetrics, pricing?: BenchmarkPricin
 }
 
 function parseTranscript(stdout: string): TranscriptMetrics {
-	const metrics: TranscriptMetrics = { cumulativeInputTokens: 0, cumulativeOutputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, usageIssues: [], computeUnits: null, peakContextLoad: 0, observedTailBreach: false, contextIssues: [], reportedCost: 0, turns: 0, candidateOutput: "" };
+	const metrics: TranscriptMetrics = { perTurn: [], unsafeContinuation: false, cumulativeInputTokens: 0, cumulativeOutputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, usageIssues: [], computeUnits: null, peakContextLoad: 0, observedTailBreach: false, contextIssues: [], reportedCost: 0, turns: 0, candidateOutput: "" };
 	let unfinishedTurn = false;
 	for (const line of stdout.split(/\r?\n/)) {
 		if (!line.trim()) continue;
@@ -349,6 +383,7 @@ function parseTranscript(stdout: string): TranscriptMetrics {
 		if (record.type === "message_start") unfinishedTurn = true;
 		if (record.type !== "message_end") continue;
 		unfinishedTurn = false;
+		if (metrics.observedTailBreach) metrics.unsafeContinuation = true;
 		metrics.turns += 1;
 		if (message.stopReason === "error" || message.stopReason === "aborted") metrics.usageIssues.push(`Turn ${metrics.turns}: ${message.stopReason} response may have incomplete usage.`);
 		if (typeof message.model === "string") metrics.resolvedModel = message.model;
@@ -377,6 +412,7 @@ function parseTranscript(stdout: string): TranscriptMetrics {
 		const totalTokens = usage.totalTokens === undefined
 			? sumUsage(sumUsage(input, output), sumUsage(cacheRead, cacheWrite))
 			: typeof usage.totalTokens === "number" && Number.isFinite(usage.totalTokens) && usage.totalTokens >= 0 ? usage.totalTokens : null;
+		metrics.perTurn.push({ turn: metrics.turns, contextLoad: totalTokens, input, output, cacheRead, cacheWrite });
 		if (totalTokens !== null && totalTokens > 150_000) metrics.observedTailBreach = true;
 		if (totalTokens === null) metrics.contextIssues.push(`Turn ${metrics.turns}: per-turn total tokens unavailable.`);
 		metrics.peakContextLoad = metrics.peakContextLoad === null || totalTokens === null ? null : Math.max(metrics.peakContextLoad, totalTokens);
@@ -392,15 +428,23 @@ function parseTranscript(stdout: string): TranscriptMetrics {
 	return metrics;
 }
 
-async function evaluate(evaluator: BenchmarkEvaluator, candidateOutput: string, workspace: string, outputDir: string, caseDir: string, env: NodeJS.ProcessEnv): Promise<EvaluationResult> {
+async function evaluate(evaluator: BenchmarkEvaluator, candidateOutput: string, workspace: string, outputDir: string, caseDir: string, env: NodeJS.ProcessEnv, workflow?: unknown): Promise<EvaluationResult> {
 	if (evaluator.kind === "output-includes") {
 		return { kind: evaluator.kind, passed: candidateOutput.includes(evaluator.expected), evidence: candidateOutput.includes(evaluator.expected) ? "Candidate output contained expected value." : "Candidate output omitted expected value." };
 	}
 	const inputPath = path.join(outputDir, "evaluator-input.json");
-	fs.writeFileSync(inputPath, JSON.stringify({ candidateOutput, workspace, expectations: evaluator.expectations }, null, 2), { encoding: "utf-8", mode: 0o600 });
+	fs.writeFileSync(inputPath, JSON.stringify({ candidateOutput, workspace, workflow, expectations: evaluator.expectations }, null, 2), { encoding: "utf-8", mode: 0o600 });
 	const replacements: Record<string, string> = { "{input}": inputPath, "{workspace}": workspace, "{caseDir}": caseDir };
 	const args = (evaluator.args ?? []).map((arg) => Object.entries(replacements).reduce((value, [token, replacement]) => value.replaceAll(token, replacement), arg));
 	const processResult = await spawnCaptured(evaluator.command, args, { cwd: outputDir, env: { ...env, PI_BENCHMARK_EVALUATOR_INPUT: inputPath, PI_BENCHMARK_WORKSPACE: workspace }, timeoutMs: evaluator.timeoutMs ?? 30_000 });
+	if (evaluator.requireStructuredVerdict) {
+		let verdict: unknown;
+		try { verdict = JSON.parse(processResult.stdout); } catch { /* Missing or malformed verdict fails closed. */ }
+		if (!verdict || typeof verdict !== "object" || Array.isArray(verdict) || !("passed" in verdict) || typeof verdict.passed !== "boolean") {
+			return { kind: evaluator.kind, passed: false, evidence: `Evaluator did not return a passing structured verdict.\n${processResult.stdout || processResult.stderr}`.trim(), exitCode: processResult.exitCode, timedOut: processResult.timedOut };
+		}
+		if (!verdict.passed) return { kind: evaluator.kind, passed: false, evidence: processResult.stdout.trim(), exitCode: processResult.exitCode, timedOut: processResult.timedOut };
+	}
 	return { kind: evaluator.kind, passed: processResult.exitCode === 0 && !processResult.timedOut, evidence: (processResult.stdout || processResult.stderr || `Evaluator exited ${processResult.exitCode}.`).trim(), exitCode: processResult.exitCode, timedOut: processResult.timedOut };
 }
 
@@ -444,6 +488,102 @@ function reportMarkdown(benchmarkCase: BenchmarkCase, result: Record<string, unk
 	return `# Benchmark: ${benchmarkCase.id}\n\n**${result.passed ? "PASS" : "FAIL"}**\n\n- Agent role: ${benchmarkCase.agentRole}\n- Route: ${benchmarkCase.route.modelTier} (${benchmarkCase.route.model}; Thinking level ${benchmarkCase.route.thinkingLevel})\n- Evaluator: ${evaluation.kind} — ${evaluation.passed ? "passed" : "failed"}\n- Mutation policy: ${benchmarkCase.mutationPolicy}\n- Cumulative output tokens: ${metrics.cumulativeOutputTokens ?? "unknown"}\n- Reasoning tokens: ${metrics.reasoningTokens ?? "unknown"}\n- Peak context load: ${metrics.peakContextLoad ?? "unknown"}\n- Tail breach: ${tailBreach === null ? "unknown" : tailBreach ? "yes" : "no"}\n- Current Benchmark cost: ${benchmarkCost ? `$${benchmarkCost.amount.toFixed(6)}` : `unavailable (${result.benchmarkCostUnavailableReason})`}\n- Recorded historical cost: ${metrics.reportedCost === null ? "unavailable" : `$${metrics.reportedCost.toFixed(6)}`}\n\n## Evaluation\n\n${evaluation.evidence}\n`;
 }
 
+/** Benchmark-only orchestration protocol. Parent sessions persist; each child is a
+ * real, fresh role-scoped Pi process. No nested extension/autonomous launches. */
+async function executeWorkflow(benchmarkCase: BenchmarkCase, baseArgs: string[], workspace: string, supportDir: string, candidateEnv: NodeJS.ProcessEnv, env: NodeJS.ProcessEnv, budget: number) {
+	const config = benchmarkCase.workflow!;
+	const parents: Array<{ process: ProcessResult; metrics: TranscriptMetrics; session: string; resolved: ReturnType<typeof resolveSessionTelemetry>; invocation: { command: string; args: string[] } }> = [];
+	const children: Array<{ role: string; task: string; process: ProcessResult; metrics: TranscriptMetrics; session: string; passed: boolean; changedFiles: string[]; before: Record<string, string>; resolved: ReturnType<typeof resolveSessionTelemetry>; invocation: { command: string; args: string[] }; fresh: true }> = [];
+	const verifications: Array<ProcessResult & { snapshot: Record<string, string> }> = [];
+	const failures: string[] = [];
+	const all: string[] = [];
+	let amount = 0;
+	const components: BenchmarkCost[] = [];
+	let costIssue: string | null = null;
+	let finished = false;
+	let prompt = benchmarkCase.prompt + `\n\nBenchmark workflow protocol: use normal tools for inspection/integration. End each turn with ONLY JSON: {"action":"delegate","role":"allowed role","task":"bounded task and necessary context"}, {"action":"verify"}, or {"action":"finish"}. Runner executes real children sequentially and returns observed results. Do not launch Pi yourself. Allowed roles: ${config.children.map(c => c.role).join(", ")}. At most ${config.maxDelegations} delegations and ${config.maxParentTurns} parent turns. Verification command: ${JSON.stringify(config.verification)}. Finish only after integrating and successful verification. Child failures must be resolved, not ignored. Stop rather than continue above 150k context; unavailable telemetry/spend stops launches.`;
+	const deadline = Date.now() + benchmarkCase.timeoutMs;
+	function canLaunch(): boolean {
+		if (costIssue || amount >= budget || Date.now() >= deadline) {
+			failures.push(costIssue ?? (amount >= budget ? "Workflow spend limit reached." : "Workflow deadline reached."));
+			return false;
+		}
+		return true;
+	}
+	function account(process: ProcessResult, pricing: BenchmarkPricing): TranscriptMetrics {
+		all.push(process.stdout);
+		const metrics = parseTranscript(process.stdout);
+		const cost = repriceTranscript(metrics, pricing);
+		if (!cost.benchmarkCost) costIssue = cost.benchmarkCostUnavailableReason;
+		else { amount += cost.benchmarkCost.amount; components.push(cost.benchmarkCost); }
+		if (!Number.isFinite(amount)) costIssue = "Workflow spend overflow.";
+		return metrics;
+	}
+	const session = baseArgs[baseArgs.indexOf("--session") + 1]!;
+	for (let turn = 0; turn < config.maxParentTurns; turn++) {
+		if (!canLaunch()) break;
+		const args = [...baseArgs];
+		args[args.length - 1] = prompt;
+		const spec = getPiSpawnCommand(args, { env });
+		const process = await spawnCaptured(spec.command, spec.args, { cwd: workspace, env: candidateEnv, timeoutMs: Math.max(1, deadline - Date.now()) });
+		const metrics = account(process, benchmarkCase.currentPricing!);
+		const parentResolved = resolveSessionTelemetry(session, candidateEnv[BENCHMARK_TELEMETRY_PATH_ENV]!, metrics);
+		if (parentResolved.model !== benchmarkCase.route.model || parentResolved.thinkingLevel !== benchmarkCase.route.thinkingLevel) costIssue = "Parent Route telemetry differs from configured pricing Route.";
+		parents.push({ process, metrics, session, resolved: parentResolved, invocation: spec });
+		if (costIssue || process.exitCode !== 0 || process.timedOut || metrics.usageIssues.length || metrics.peakContextLoad === null || metrics.unsafeContinuation) {
+			failures.push("Parent execution/context evidence unsafe; fresh session required for a new run."); break;
+		}
+		let action: { action?: string; role?: string; task?: string };
+		try { action = JSON.parse(metrics.candidateOutput); if (!action || typeof action !== "object") throw new Error(); }
+		catch { failures.push("Invalid workflow action."); break; }
+		if (action.action === "finish") { finished = true; break; }
+		if (metrics.observedTailBreach) { failures.push("Parent context boundary reached; fresh session required, continuation refused."); break; }
+		if (action.action === "verify") {
+			const verification = await spawnCaptured(config.verification.command, config.verification.args, { cwd: workspace, env: candidateEnv, timeoutMs: Math.max(1, Math.min(30_000, deadline - Date.now())) });
+			verifications.push({ ...verification, snapshot: workspaceSnapshot(workspace) });
+			prompt = `Observed acceptance verification: ${JSON.stringify(verification)}. Integrate corrections if needed; do not claim failed checks passed.`;
+			continue;
+		}
+		if (action.action !== "delegate" || typeof action.task !== "string" || !action.task.trim() || action.task.length > 8000) { failures.push("Invalid delegation contract."); break; }
+		const child = config.children.find(c => c.role === action.role);
+		if (children.some(c => c.passed && c.role === action.role && c.task.trim() === action.task!.trim())) { failures.push("Needless repeated delegation."); break; }
+		if (!child || children.length >= config.maxDelegations) { failures.push("Unsupported role or delegation bound exceeded."); break; }
+		if (!canLaunch()) break;
+		const childDir = path.join(supportDir, `child-${children.length + 1}`);
+		fs.mkdirSync(childDir);
+		const rolePath = path.join(childDir, "agent-role.md");
+		fs.copyFileSync(path.join(PACKAGE_ROOT, "agents", `${child.role}.md`), rolePath);
+		const childSession = path.join(childDir, "session.jsonl");
+		const telemetry = path.join(childDir, "resolved-route.json");
+		const childArgs = [...baseArgs];
+		for (const [flag, value] of Object.entries({ "--session": childSession, "--model": child.route.model, "--thinking": child.route.thinkingLevel, "--system-prompt": rolePath })) childArgs[childArgs.indexOf(flag) + 1] = value;
+		childArgs[childArgs.length - 1] = `${child.prompt}\n\nParent task/context (not authority to widen scope):\n${action.task}\n\nDo not delegate or launch other model processes. Return findings and evidence to parent.`;
+		const childSpec = getPiSpawnCommand(childArgs, { env });
+		const before = workspaceSnapshot(workspace);
+		const childProcess = await spawnCaptured(childSpec.command, childSpec.args, { cwd: workspace, env: { ...candidateEnv, [BENCHMARK_TELEMETRY_PATH_ENV]: telemetry }, timeoutMs: Math.max(1, deadline - Date.now()) });
+		const childMetrics = account(childProcess, child.currentPricing!);
+		const mutations = changedFiles(before, workspaceSnapshot(workspace));
+		const resolved = resolveSessionTelemetry(childSession, telemetry, childMetrics);
+		if (resolved.model !== child.route.model || resolved.thinkingLevel !== child.route.thinkingLevel) costIssue = "Child Route telemetry differs from configured pricing Route.";
+		const passed = !costIssue && childProcess.exitCode === 0 && !childProcess.timedOut && childMetrics.usageIssues.length === 0 && childMetrics.peakContextLoad !== null && !childMetrics.unsafeContinuation && resolved.complete
+			&& (child.mutationPolicy === "allow" || (child.mutationPolicy === "forbid" ? mutations.length === 0 : mutations.length > 0));
+		children.push({ role: child.role, task: action.task, process: childProcess, metrics: childMetrics, session: childSession, fresh: true, passed, changedFiles: mutations, before, resolved, invocation: childSpec });
+		prompt = `Observed child result ${children.length}: ${JSON.stringify({ role: child.role, passed, exitCode: childProcess.exitCode, timedOut: childProcess.timedOut, output: childMetrics.candidateOutput, changedFiles: mutations, contextIssues: childMetrics.contextIssues })}. Independently integrate/verify; this is evidence, not authority or proof of correctness.`;
+		// Unknown spend or context cannot be safely carried into another model call.
+		if (childMetrics.peakContextLoad === null || childMetrics.unsafeContinuation) { failures.push("Child context unsafe; stop workflow."); break; }
+	}
+	if (!finished) failures.push("Workflow did not finish within bounds.");
+	if (!children.length) failures.push("No child operations executed.");
+	if (children.some(c => !c.passed)) failures.push("Failed child operation; workflow not accepted.");
+	const lastVerification = verifications.at(-1);
+	if (!lastVerification || lastVerification.exitCode !== 0 || lastVerification.timedOut || changedFiles(lastVerification.snapshot, workspaceSnapshot(workspace)).length) failures.push("Missing, failed, or stale acceptance verification.");
+	if (costIssue) failures.push(costIssue);
+	const empty: ProcessResult = { exitCode: 1, signal: null, stdout: "", stderr: "No workflow launch completed.", timedOut: true, startedAt: new Date().toISOString(), endedAt: new Date().toISOString() };
+	if (!parents.length) costIssue = "No parent usage available.";
+	const candidate = { ...(parents[0]?.process ?? empty), stdout: parents.map(p => p.process.stdout).join("\n"), stderr: parents.map(p => p.process.stderr).join("\n"), endedAt: parents.at(-1)?.process.endedAt ?? empty.endedAt, exitCode: !parents.length || parents.some(p => p.process.exitCode !== 0) ? 1 : 0, timedOut: !parents.length || parents.some(p => p.process.timedOut) };
+	return { candidate, allStdout: all.join("\n"), evidence: { passed: failures.length === 0, failures, parents, children, verifications }, cost: { benchmarkCost: costIssue ? null : { amount, components }, benchmarkCostUnavailableReason: costIssue } };
+}
+
 export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<BenchmarkRunResult> {
 	const casePath = path.resolve(options.casePath);
 	const outputDir = path.resolve(options.outputDir);
@@ -452,6 +592,8 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 	if (benchmarkCase.currentPricing?.computeUnit !== undefined) {
 		throw new Error("Local benchmark runner does not capture compute-unit telemetry; computeUnit pricing is unsupported for live cases. Import external evidence instead.");
 	}
+	if (benchmarkCase.workflow && (!benchmarkCase.currentPricing || benchmarkCase.workflow.children.some(c => !c.currentPricing))) throw new Error("Workflow parent and children require currentPricing before launch.");
+	if (options.launchBudgetUsd !== undefined && (!Number.isFinite(options.launchBudgetUsd) || options.launchBudgetUsd <= 0)) throw new Error("launchBudgetUsd must be positive and finite.");
 	const caseDir = path.dirname(casePath);
 	const fixturePath = benchmarkCase.fixture ? path.resolve(caseDir, benchmarkCase.fixture) : undefined;
 	if (fixturePath && (outputDir === fixturePath || outputDir.startsWith(`${fixturePath}${path.sep}`))) throw new Error("Output directory must not be inside fixture.");
@@ -473,10 +615,10 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 		const before = workspaceSnapshot(workspace);
 		const sessionPath = path.join(outputDir, "session.jsonl");
 		if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(benchmarkCase.agentRole)) throw new Error(`Unknown Agent role: ${benchmarkCase.agentRole}`);
-		// Watchdog is a runtime responsibility, not an installed agent. Benchmark it
-		// with a frozen read-only surrogate without changing production discovery.
-		const roleSource = benchmarkCase.agentRole === "watchdog"
-			? path.join(PACKAGE_ROOT, "docs/benchmark-prompts/watchdog.md")
+		// Parent and watchdog are runtime responsibilities, not installed agents.
+		// Frozen benchmark prompts do not change production role discovery.
+		const roleSource = ["watchdog", "parent"].includes(benchmarkCase.agentRole)
+			? path.join(PACKAGE_ROOT, `docs/benchmark-prompts/${benchmarkCase.agentRole}.md`)
 			: path.join(PACKAGE_ROOT, "agents", `${benchmarkCase.agentRole}.md`);
 		if (!fs.existsSync(roleSource)) throw new Error(`Unknown Agent role: ${benchmarkCase.agentRole}`);
 		const artifactRolePromptPath = path.join(outputDir, "agent-role.md");
@@ -494,15 +636,36 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 		const env = options.env ?? process.env;
 		const candidateEnv = candidateEnvironment(env, workspace, candidateTelemetryPath, [sourceRepository, PACKAGE_ROOT, caseDir, outputDir].filter((value): value is string => Boolean(value)));
 		const spawnSpec = getPiSpawnCommand(args, { env });
-		const candidate = await spawnCaptured(spawnSpec.command, spawnSpec.args, { cwd: workspace, env: candidateEnv, timeoutMs: benchmarkCase.timeoutMs });
+		const workflowRun = benchmarkCase.workflow ? await executeWorkflow(benchmarkCase, args, workspace, supportDir, candidateEnv, env, options.launchBudgetUsd ?? 25) : undefined;
+		const candidate = workflowRun?.candidate ?? await spawnCaptured(spawnSpec.command, spawnSpec.args, { cwd: workspace, env: candidateEnv, timeoutMs: benchmarkCase.timeoutMs });
 		if (candidateRoot) {
 			if (fs.existsSync(candidateSessionPath)) fs.copyFileSync(candidateSessionPath, sessionPath);
 			if (fs.existsSync(candidateTelemetryPath)) fs.copyFileSync(candidateTelemetryPath, telemetryPath);
+			for (const parent of workflowRun?.evidence.parents ?? []) parent.session = sessionPath;
+			for (const child of workflowRun?.evidence.children ?? []) {
+				const artifactDir = path.join(outputDir, path.basename(path.dirname(child.session)));
+				fs.cpSync(path.dirname(child.session), artifactDir, { recursive: true });
+				child.session = path.join(artifactDir, "session.jsonl");
+			}
 		}
 		const after = workspaceSnapshot(workspace);
 		const mutations = changedFiles(before, after);
 		const mutationPassed = benchmarkCase.mutationPolicy === "allow" || (benchmarkCase.mutationPolicy === "forbid" ? mutations.length === 0 : mutations.length > 0);
-		const metrics = parseTranscript(candidate.stdout);
+		const metrics = parseTranscript(workflowRun?.allStdout ?? candidate.stdout);
+		if (workflowRun) {
+			const parentMetrics = parseTranscript(candidate.stdout);
+			metrics.candidateOutput = parentMetrics.candidateOutput;
+			const processes = [...workflowRun.evidence.parents, ...workflowRun.evidence.children];
+			// An empty/unfinished process cannot disappear at a JSONL join boundary.
+			for (const field of ["cumulativeInputTokens", "cumulativeOutputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens", "reportedCost", "peakContextLoad"] as const) {
+				if (processes.some(p => p.metrics[field] === null)) metrics[field] = null;
+			}
+			metrics.usageIssues = processes.flatMap(p => p.metrics.usageIssues.map(issue => `${p.session}: ${issue}`));
+			metrics.contextIssues = processes.flatMap(p => p.metrics.contextIssues.map(issue => `${p.session}: ${issue}`));
+			// Child sessions are independent: concatenated accounting records are not
+			// a shared context lineage. Only actual same-session continuation is unsafe.
+			metrics.unsafeContinuation = parentMetrics.unsafeContinuation || workflowRun.evidence.children.some(c => c.metrics.unsafeContinuation);
+		}
 		const resolved = resolveSessionTelemetry(sessionPath, telemetryPath, metrics);
 		const receiptPath = path.join(outputDir, "receipt.json");
 		const receipt = {
@@ -513,15 +676,17 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 			session: { path: sessionPath, fresh: true },
 			resolved,
 			candidate,
+			...(workflowRun ? { workflow: workflowRun.evidence } : {}),
 			workspace: { before, after, changedFiles: mutations },
 		};
 		writeImmutableJson(receiptPath, receipt);
-		const evaluation = await evaluate(benchmarkCase.evaluator, metrics.candidateOutput, workspace, outputDir, caseDir, env);
-		const telemetryPassed = resolved.complete && metrics.peakContextLoad !== null && metrics.usageIssues.length === 0;
-		const passed = candidate.exitCode === 0 && !candidate.timedOut && mutationPassed && telemetryPassed && evaluation.passed;
-		const cost = repriceTranscript(metrics, benchmarkCase.currentPricing);
+		const evaluation = await evaluate(benchmarkCase.evaluator, metrics.candidateOutput, workspace, outputDir, caseDir, env, workflowRun?.evidence);
+		const telemetryPassed = resolved.complete && metrics.peakContextLoad !== null && metrics.usageIssues.length === 0
+			&& (!(["oracle", "parent"].includes(benchmarkCase.agentRole)) || !metrics.unsafeContinuation);
+		const passed = candidate.exitCode === 0 && !candidate.timedOut && mutationPassed && telemetryPassed && evaluation.passed && (workflowRun?.evidence.passed ?? true);
+		const cost = workflowRun?.cost ?? repriceTranscript(metrics, benchmarkCase.currentPricing);
 		const result = {
-			schemaVersion: 4,
+			schemaVersion: workflowRun ? 5 : 4,
 			caseId: benchmarkCase.id,
 			agentRole: benchmarkCase.agentRole,
 			route: benchmarkCase.route,
@@ -536,6 +701,7 @@ export async function runBenchmarkCase(options: RunBenchmarkOptions): Promise<Be
 			},
 			mutation: { policy: benchmarkCase.mutationPolicy, passed: mutationPassed, changedFiles: mutations },
 			evaluation,
+			...(workflowRun ? { workflow: workflowRun.evidence } : {}),
 			metrics,
 			...cost,
 			recordedHistoricalCost: { amount: metrics.reportedCost, source: "Pi-reported usage.cost.total (adapter estimate, not provider invoice)" },
