@@ -413,10 +413,131 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(mockPi.callCount(), 1);
 		assert.match(JSON.stringify(result.details), /Converted structured single-child request/);
 		assert.match(result.content[0]?.text ?? "", /Completed: workflow/);
-		assert.doesNotMatch(result.content[0]?.text ?? "", /Structured child completed/);
+		assert.match(result.content[0]?.text ?? "", /Structured child completed/);
+		assert.ok(Buffer.byteLength(result.content[0]?.text ?? "") < 1_000);
 		const artifactPath = (result.content[0]?.text ?? "").match(/Output artifact: (.+)/)?.[1];
 		assert.ok(artifactPath);
 		assert.match(fs.readFileSync(artifactPath, "utf-8"), /Structured child completed/);
+	});
+
+	it("returns a useful bounded public workflow receipt while preserving large child and returned evidence", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const marker = "EVIDENCE-".repeat(20_000);
+		mockPi.onCall({ output: marker });
+		const result = await makeExecutor([makeAgent("echo")]).executePublic(
+			"large-workflow", { workflowScript: `const child = await runs.run("main", {agent:"echo", task:"work"}); emit(child.output); return { outcome:"review-ready", evidence:child.output };`, async: false },
+			new AbortController().signal, undefined, makeMinimalCtx(tempDir),
+		);
+		const receipt = result.content[0]?.text ?? "";
+		assert.equal(result.isError, undefined);
+		assert.ok(Buffer.byteLength(receipt) < 3_000, `receipt: ${Buffer.byteLength(receipt)} bytes`);
+		assert.match(receipt, /review-ready/);
+		assert.match(receipt, /main/);
+		assert.ok(receipt.includes("EVIDENCE-") && !receipt.includes(marker));
+		assert.match(JSON.stringify(result.details.workflow?.value), /EVIDENCE-EVIDENCE-/);
+		const artifact = receipt.match(/Output artifact: (.+)/)?.[1];
+		assert.ok(artifact);
+		assert.match(fs.readFileSync(artifact, "utf-8"), /EVIDENCE-EVIDENCE-/);
+	});
+
+	it("shows direct child outcome and array child outputs in bounded public receipts", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		mockPi.onCall({ output: "Review-ready: approved after checking acceptance." });
+		const executor = makeExecutor([makeAgent("echo")]);
+		for (const script of [
+			`return await runs.run("main", {agent:"echo", task:"review"})`,
+			`return await runs.all([{key:"main", agent:"echo", task:"review"}])`,
+		]) {
+			const result = await executor.executePublic("child-outcome", { workflowScript: script, async: false }, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+			const receipt = result.content[0]?.text ?? "";
+			assert.equal(result.isError, undefined);
+			assert.match(receipt, /Review-ready: approved after checking acceptance/);
+			assert.match(receipt, /Child main: completed/);
+			assert.ok(Buffer.byteLength(receipt) < 3_000);
+		}
+	});
+
+	it("keeps async workflow summary bounded and full evidence retrievable on disk", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const marker = "ASYNC-EVIDENCE-".repeat(12_000);
+		mockPi.onCall({ output: marker });
+		const executor = makeExecutor([makeAgent("echo")]);
+		const launch = await executor.executePublic("large-async", {
+			workflowScript: `const child = await runs.run("main", {agent:"echo", task:"work"}); emit(child.output); return {outcome:"review-ready", evidence:child.output};`, async: true,
+		}, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+		const resultPath = path.join(DIRS.results, `${launch.details.asyncId}.json`);
+		for (let i = 0; i < 200 && !fs.existsSync(resultPath); i++) await new Promise((resolve) => setTimeout(resolve, 25));
+		assert.ok(fs.existsSync(resultPath), "expected finished workflow result");
+		const stored = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as { summary: string; output: string; workflow: { value: unknown }; results: Array<{ output: string }> };
+		assert.ok(Buffer.byteLength(stored.summary) < 3_000);
+		assert.match(stored.summary, /review-ready/);
+		assert.match(stored.summary, /main/);
+		assert.ok(stored.output.includes(marker));
+		assert.ok(JSON.stringify(stored.workflow.value).includes(marker));
+		assert.ok(stored.results[0]?.output.includes(marker));
+		const status = await executor.execute("async-status", { action: "status", id: launch.details.asyncId }, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+		assert.ok(Buffer.byteLength(status.content[0]?.text ?? "") < 5_000);
+	});
+
+	it("projects evidence-before-outcome in async status and keeps multi-child failure status bounded", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		mockPi.onCall({ output: "Child review-ready and acceptance passed." });
+		const executor = makeExecutor([makeAgent("echo")]);
+		const launch = await executor.executePublic("semantic-status", {
+			workflowScript: `const child = await runs.run("main", {agent:"echo", task:"review"}); return {evidence:"X".repeat(15000), outcome:"review-ready", acceptance:"passed", output:child.output};`, async: true,
+		}, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+		const resultPath = path.join(DIRS.results, `${launch.details.asyncId}.json`);
+		for (let i = 0; i < 200 && !fs.existsSync(resultPath); i++) await new Promise((resolve) => setTimeout(resolve, 25));
+		assert.ok(fs.existsSync(resultPath));
+		const status = await executor.execute("semantic-status-read", { action: "status", id: launch.details.asyncId }, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+		assert.match(status.content[0]?.text ?? "", /Return: outcome=review-ready; acceptance=passed/);
+		assert.ok(Buffer.byteLength(status.content[0]?.text ?? "") < 5_000);
+		assert.match(fs.readFileSync(resultPath, "utf-8"), /X{100}/);
+
+		const many = await executor.executePublic("many-children", {
+			workflowScript: `await runs.all(Array.from({length:16}, (_, i) => ({key:"child-"+i, agent:"echo", task:"review"}))); throw new Error("review blocker: acceptance rejected");`, async: true,
+		}, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+		const manyPath = path.join(DIRS.results, `${many.details.asyncId}.json`);
+		for (let i = 0; i < 300 && !fs.existsSync(manyPath); i++) await new Promise((resolve) => setTimeout(resolve, 25));
+		assert.ok(fs.existsSync(manyPath));
+		const manyStatus = await executor.execute("many-status", { action: "status", id: many.details.asyncId }, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+		const text = manyStatus.content[0]?.text ?? "";
+		assert.match(text, /review blocker: acceptance rejected/);
+		assert.match(text, /4 more workflow children/);
+		assert.ok(Buffer.byteLength(text) < 9_000, `status: ${Buffer.byteLength(text)} bytes`);
+		const stored = JSON.parse(fs.readFileSync(manyPath, "utf-8")) as { results: unknown[] };
+		assert.equal(stored.results.length, 16);
+	});
+
+	it("bounds large async workflow errors in status and result summary", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const marker = "ASYNC-FAILED-EVIDENCE-".repeat(10_000);
+		mockPi.onCall({ output: marker, stderr: "provider failed", exitCode: 1 });
+		const executor = makeExecutor([makeAgent("echo")]);
+		const launch = await executor.executePublic("failed-async", {
+			workflowScript: `return await runs.run("main", {agent:"echo", task:"work"})`, async: true,
+		}, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+		const resultPath = path.join(DIRS.results, `${launch.details.asyncId}.json`);
+		for (let i = 0; i < 200 && !fs.existsSync(resultPath); i++) await new Promise((resolve) => setTimeout(resolve, 25));
+		assert.ok(fs.existsSync(resultPath));
+		const stored = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as { success: boolean; summary: string; results: Array<{ output: string }> };
+		assert.equal(stored.success, false);
+		assert.ok(Buffer.byteLength(stored.summary) < 4_000);
+		assert.match(stored.summary, /main/);
+		assert.ok(stored.results[0]?.output.includes(marker));
+		const status = await executor.execute("failed-async-status", { action: "status", id: launch.details.asyncId }, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+		assert.ok(Buffer.byteLength(status.content[0]?.text ?? "") < 5_000);
+	});
+
+	it("keeps failed workflow diagnostics bounded and cites the full artifact", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const marker = "FAILED-EVIDENCE-".repeat(12_000);
+		mockPi.onCall({ output: marker, stderr: "provider failed", exitCode: 1 });
+		const result = await makeExecutor([makeAgent("echo")]).executePublic("large-failure", {
+			workflowScript: `return await runs.run("main", {agent:"echo", task:"work"})`, async: false,
+		}, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+		assert.equal(result.isError, true);
+		const receipt = result.content[0]?.text ?? "";
+		assert.ok(Buffer.byteLength(receipt) < 4_000);
+		assert.match(receipt, /Failed: workflow/);
+		assert.match(receipt, /main/);
+		const artifact = receipt.match(/Output artifact: (.+)/)?.[1];
+		assert.ok(artifact);
+		assert.ok(fs.readFileSync(artifact, "utf-8").includes(marker));
 	});
 
 	it("keeps public foreground failures bounded with a full artifact", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
@@ -662,7 +783,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.match(steeringEnv[SUBAGENT_STEER_ACK_DIR_ENV] ?? "", /control[/\\]workflow-foreground[/\\].+[/\\]control[/\\]steer-acks[/\\]0$/);
 		assert.equal(fs.existsSync(path.join(result.details.asyncDir!, "control", "workflow-foreground", persistedResult.results?.[0]?.runId ?? "missing")), false);
 		assert.match(persistedResult.summary ?? "", /Completed: workflow/);
-		assert.doesNotMatch(persistedResult.summary ?? "", /Return:/);
+		assert.match(persistedResult.summary ?? "", /Return: \{"answer":42\}/);
 		const aggregatePath = (persistedResult.summary ?? "").match(/Output artifact: (.+)/)?.[1];
 		assert.ok(aggregatePath);
 		assert.match(fs.readFileSync(aggregatePath, "utf-8"), /Return:\n\{\n  "answer": 42\n\}/);

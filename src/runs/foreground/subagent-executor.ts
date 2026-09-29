@@ -115,6 +115,7 @@ import { resolveAuthorityDecision } from "../../policy/authority.ts";
 import { handleHerdrInspectorAction, HERDR_INSPECTOR_ACTIONS } from "../../inspectors/herdr/actions.ts";
 import { handleHerdrProjectPaneAction, HERDR_PROJECT_PANE_ACTIONS } from "../../inspectors/herdr/project-panes.ts";
 import { previewSimpleWorkflowRun, runWorkflowScript, WorkflowScriptError, type WorkflowScriptChildResult, type WorkflowSteerOptions, type WorkflowSteerResult } from "../../workflows/scripted-workflow.ts";
+import { workflowBrief, workflowReturnSummary } from "../../workflows/return-summary.ts";
 import { resolveWorkflowChatProgress, type WorkflowChatProgressProjection } from "../../workflows/chat-progress.ts";
 import {
 	cleanupWorktrees,
@@ -3691,6 +3692,29 @@ function normalizeGateParams(params: SubagentParamsLike): GateParamsNormalizatio
 	return { ok: true, params: { ...rest, ...(normalized.acceptance !== undefined ? { acceptance: normalized.acceptance } : {}) } };
 }
 
+function workflowParentSummary(input: {
+	value?: unknown;
+	children: WorkflowScriptChildResult[];
+	trace: NonNullable<Details["workflow"]>["trace"];
+	emits: unknown[];
+	error?: string;
+}): string {
+	const brief = (value: unknown, limit = 180): string => workflowBrief(value, limit);
+	const lines: string[] = [];
+	if (input.error) lines.push(`Blocker: ${brief(compactFailureDiagnostic(input.error), 300)}`);
+	if (input.value !== undefined) lines.push(`Return: ${workflowReturnSummary(input.value, 300)}`);
+	if (input.emits.length) lines.push(`Latest emit: ${brief(input.emits.at(-1), 60)} (${input.emits.length} total)`);
+	const visibleChildren = [...input.children.filter((child) => !child.ok || (child.results as SingleResult[] | undefined)?.some((result) => result.acceptance?.status === "rejected")), ...input.children.filter((child) => child.ok && !(child.results as SingleResult[] | undefined)?.some((result) => result.acceptance?.status === "rejected"))].slice(0, 12);
+	for (const child of visibleChildren) {
+		const acceptance = (child.results as SingleResult[] | undefined)?.map((result) => result.acceptance?.status).filter(Boolean).join(", ");
+		lines.push(`Child ${brief(child.key, 60)}: ${child.detached ? "detached" : child.ok ? "completed" : "failed"}${acceptance ? `; acceptance ${acceptance}` : ""}${child.runId ? `; run ${brief(child.runId, 80)}` : ""}${child.artifactPaths[0] ? `; artifact ${brief(child.artifactPaths[0], 180)}` : ""}${child.ok && child.output.trim() ? `; output ${brief(child.output.trim(), 180)}` : child.ok && child.structuredOutput !== undefined ? `; output ${brief(child.structuredOutput, 180)}` : ""}${!child.ok ? `; blocker ${brief(compactFailureDiagnostic(child.error ?? "Child failed."), 180)}` : ""}`);
+	}
+	if (input.children.length > visibleChildren.length) lines.push(`${input.children.length - visibleChildren.length} more children; inspect workflow artifact.`);
+	const failed = input.trace.filter((entry) => entry.state === "failed");
+	for (const entry of failed.slice(0, 3)) lines.push(`Failed ${brief(entry.key, 60)}: ${brief(compactFailureDiagnostic(entry.error ?? "Run failed."), 180)}`);
+	return lines.join("\n").slice(0, 3_000);
+}
+
 function formatWorkflowValue(value: unknown): string {
 	if (value === undefined) return "(undefined)";
 	if (typeof value === "string") return value;
@@ -4192,13 +4216,13 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 						if (traceLines.length > 0) sections.push(`Call trace:\n${traceLines.join("\n")}`);
 						const workflowText = sections.join("\n\n");
 						const outputWarning = writeWorkflowAggregateOutput(workflowAggregateOutputPath, workflowText, producedChildOutputPaths);
-						const resultSummary = formatSingleCompletionReceipt({
+						const resultSummary = `${formatSingleCompletionReceipt({
 							agent: "workflow",
 							runId: workflowRunId,
 							success: true,
 							artifactPath: outputWarning ? undefined : existingRegularFile(workflowAggregateOutputPath),
 							warnings: outputWarning ? [outputWarning] : undefined,
-						});
+						})}\n${workflowParentSummary({ value: workflow.value, children: workflow.children, trace: workflow.trace, emits: workflow.emits })}`;
 						const workflowUsage = sumResultsUsage(workflowResults);
 						status = { ...status, state: "complete", endedAt: Date.now(), workflow: { value: workflow.value, trace: workflow.trace, emits: workflow.emits, console: workflow.console }, totalTokens: { input: workflowUsage.input, output: workflowUsage.output, total: workflowUsage.input + workflowUsage.output }, totalCost: sumResultsCost(workflowResults) };
 						if (!writeWorkflowResult({ id: workflowRunId, runId: workflowRunId, toolCallId, agent: "workflow", mode: "workflow", success: true, state: "complete", summary: resultSummary, output: workflowText, results: workflow.children.map((child) => ({ workflowKey: child.key, ...(child.agent ? { agent: child.agent } : {}), ...(child.runId ? { runId: child.runId } : {}), output: child.output, outputState: child.output.trim() || child.structuredOutput !== undefined ? "present" : "absent", structuredOutput: child.structuredOutput, success: child.ok, ...(child.artifactPaths[0] ? { artifactPaths: { outputPath: child.artifactPaths[0] } } : {}) })), workflow: status.workflow, asyncDir, cwd: workflowCwd, sessionId: currentSessionId, timestamp: Date.now(), durationMs: Date.now() - startedAt })) return;
@@ -4226,13 +4250,13 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 						if (traceLines.length > 0) sections.push(`Call trace:\n${traceLines.join("\n")}`);
 						const workflowText = sections.join("\n\n");
 						const outputWarning = writeWorkflowAggregateOutput(workflowAggregateOutputPath, workflowText, producedChildOutputPaths);
-						const resultSummary = formatSingleCompletionReceipt({
+						const resultSummary = `${formatSingleCompletionReceipt({
 							agent: "workflow",
 							runId: workflowRunId,
 							success: false,
 							artifactPath: outputWarning ? undefined : existingRegularFile(workflowAggregateOutputPath),
 							warnings: [compactFailureDiagnostic(failureText), ...(outputWarning ? [outputWarning] : [])],
-						});
+						})}\n${workflowParentSummary({ children: partial.children, trace: partial.trace, emits: partial.emits, error: failureText })}`;
 						if (!writeWorkflowResult({ id: workflowRunId, runId: workflowRunId, toolCallId, agent: "workflow", mode: "workflow", success: false, state: status.state, summary: resultSummary, error: status.error, stopped: status.stopped, activityState: status.activityState, results: partial.children.map((child) => ({ workflowKey: child.key, ...(child.agent ? { agent: child.agent } : {}), ...(child.runId ? { runId: child.runId } : {}), output: child.output, outputState: child.output.trim() || child.structuredOutput !== undefined ? "present" : "absent", structuredOutput: child.structuredOutput, success: child.ok, ...(child.detached ? { detached: true } : {}), ...(child.artifactPaths[0] ? { artifactPaths: { outputPath: child.artifactPaths[0] } } : {}) })), workflow: status.workflow, asyncDir, cwd: workflowCwd, sessionId: currentSessionId, timestamp: Date.now(), durationMs: Date.now() - startedAt })) return;
 						persist();
 						appendWorkflowEvent({ type: "subagent.workflow.completed", state: status.state, error: status.error, ...(status.activityState ? { activityState: status.activityState } : {}) });
@@ -4353,7 +4377,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 						success: true,
 						artifactPath: outputWarning ? undefined : existingRegularFile(workflowAggregateOutputPath),
 						warnings: outputWarning ? [outputWarning] : undefined,
-					})
+					}) + `\n${workflowParentSummary({ value: workflow.value, children: workflow.children, trace: workflow.trace, emits: workflow.emits })}`
 					: displayText;
 				return attachWorkflowMission(withRunFanoutBudget({
 					content: [{ type: "text", text: parentText }],
@@ -4376,7 +4400,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 						success: false,
 						artifactPath: outputWarning ? undefined : existingRegularFile(workflowAggregateOutputPath),
 						warnings: [compactFailureDiagnostic(text), ...(outputWarning ? [outputWarning] : [])],
-					})
+					}) + `\n${workflowParentSummary({ children: partial.children, trace: partial.trace, emits: partial.emits, error: text })}`
 					: appendWorkflowOutputWarning(workflowText, outputWarning);
 				return attachWorkflowMission(withRunFanoutBudget({
 					content: [{ type: "text", text: displayText }],

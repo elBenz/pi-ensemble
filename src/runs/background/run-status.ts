@@ -21,6 +21,7 @@ import { reconcileAsyncRun, reconcileNestedAsyncDescendants } from "./stale-run-
 import { attachRootChildrenToSteps, findNestedRouteForRootId, projectNestedRegistryForRoot, type NestedRunResolutionScope } from "../shared/nested-events.ts";
 import { readMissionBinding } from "../../missions/lifecycle.ts";
 import { formatWorkflowJsonPreview } from "../../workflows/scripted-workflow.ts";
+import { workflowReturnSummary } from "../../workflows/return-summary.ts";
 import { formatRunFanoutBudget, getRunFanoutBudgetSnapshot, readRunFanoutBudgetDescriptor } from "../shared/run-fanout-budget.ts";
 
 interface RunStatusParams {
@@ -478,7 +479,7 @@ export function inspectSubagentStatus(params: RunStatusParams, deps: RunStatusDe
 				nestedWarning = `${nestedWarning ? `${nestedWarning}; ` : ""}Mission binding unavailable: ${error instanceof Error ? error.message : String(error)}`;
 			}
 
-			const workflowReturnPreview = status.workflow?.value !== undefined ? formatWorkflowJsonPreview(status.workflow.value, 240) : undefined;
+			const workflowReturnPreview = status.workflow?.value !== undefined ? workflowReturnSummary(status.workflow.value, 240) : undefined;
 			const workflowEmitPreview = status.workflow?.emits.length ? formatWorkflowJsonPreview(status.workflow.emits.at(-1), 240) : undefined;
 			const lines = [
 				`Run: ${status.runId}`,
@@ -488,7 +489,7 @@ export function inspectSubagentStatus(params: RunStatusParams, deps: RunStatusDe
 				processTerminal ? `Process terminal: ${processTerminal.state}${processTerminal.reason ? ` (${processTerminal.reason})` : ""}` : undefined,
 				status.capabilityCeiling ? `Capability ceiling: ${status.capabilityCeiling.allowedTools === undefined ? "names unrestricted" : status.capabilityCeiling.allowedTools.length === 0 ? "none" : status.capabilityCeiling.allowedTools.join(", ")}\nExtensions denied: ${status.capabilityCeiling.denyExtensions ? "yes" : "no"} (sources: ${status.capabilityCeiling.sources.join(", ")})` : undefined,
 				status.capabilityAudit ? `Capability audit: ${status.capabilityAudit.removedTools.length} tools removed, ${status.capabilityAudit.removedExtensionCount} extension entries removed` : undefined,
-				status.error ? `Error: ${status.error}` : undefined,
+				status.error ? `Error: ${status.mode === "workflow" ? `${status.error.slice(0, 500)}${status.error.length > 500 ? "… (see result artifact)" : ""}` : status.error}` : undefined,
 				statusActivityText ? `Activity: ${statusActivityText}` : undefined,
 				steeringText ? `Steering: ${steeringText}` : undefined,
 				`Mode: ${status.mode}`,
@@ -513,13 +514,17 @@ export function inspectSubagentStatus(params: RunStatusParams, deps: RunStatusDe
 					&& Boolean(control.workflowSteeringDir && fs.existsSync(control.workflowSteeringDir))
 					&& (control.activeChildren?.size ?? 0) > 0)
 				: [];
-			for (const [index, step] of (status.steps ?? []).entries()) {
+			const steps = status.steps ?? [];
+			const visibleSteps = status.mode === "workflow" && steps.length > 12
+				? [...steps.map((step, index) => ({ step, index })).filter(({ step }) => step.status === "failed" || step.acceptance?.status === "rejected"), ...steps.map((step, index) => ({ step, index })).filter(({ step }) => step.status !== "failed" && step.acceptance?.status !== "rejected")].slice(0, 12).sort((a, b) => a.index - b.index)
+				: steps.map((step, index) => ({ step, index }));
+			for (const { index, step } of visibleSteps) {
 				const stepActivityText = step.status === "running" ? formatActivityLabel(step.lastActivityAt, step.activityState) : undefined;
 				const modelThinking = formatModelThinking(step.model, step.thinking);
 				const modelText = modelThinking ? ` (${modelThinking})` : "";
 				const steeringText = formatSteeringSummary(step);
 				const steeringSuffix = steeringText ? `, steering: ${steeringText}` : "";
-				const errorText = step.error ? `, error: ${step.error}` : "";
+				const errorText = step.error ? `, error: ${status.mode === "workflow" ? `${step.error.slice(0, 300)}${step.error.length > 300 ? "… (see result artifact)" : ""}` : step.error}` : "";
 				const acceptanceText = step.acceptance?.status ? `, acceptance: ${step.acceptance.status}` : "";
 				const budgetText = step.turnBudget ? `, turn budget: ${step.turnBudget.turnCount}/${step.turnBudget.maxTurns}+${step.turnBudget.graceTurns} (${step.turnBudget.outcome})` : "";
 				const display = step.label ? `${step.label} (${step.agent})` : step.agent;
@@ -546,6 +551,7 @@ export function inspectSubagentStatus(params: RunStatusParams, deps: RunStatusDe
 					lines.push("  Steer: unavailable; external runners do not accept live messages.");
 				}
 			}
+			if (visibleSteps.length < steps.length) lines.push(`${steps.length - visibleSteps.length} more workflow children; inspect ${reconciliation.resultPath && fs.existsSync(reconciliation.resultPath) ? reconciliation.resultPath : path.join(asyncDir, "status.json")} for full status.`);
 			const attached = new Set((status.steps ?? []).flatMap((step) => step.children?.map((child) => child.id) ?? []));
 			const unattached = nestedChildren.filter((child) => !attached.has(child.id));
 			lines.push(...formatNestedRunStatusLines(unattached, { indent: "", commandHints: true, maxLines: 20 }));
@@ -564,7 +570,7 @@ export function inspectSubagentStatus(params: RunStatusParams, deps: RunStatusDe
 			if (status.state !== "running") {
 				lines.push(allExternal
 					? "Resume: unavailable; external runners do not persist Pi sessions."
-					: formatResumeGuidance(status.runId, status.steps ?? [], status.sessionFile, { stopped: status.state === "stopped" || status.stopped === true }));
+					: formatResumeGuidance(status.runId, status.mode === "workflow" ? visibleSteps.map(({ step }) => step) : steps, status.sessionFile, { stopped: status.state === "stopped" || status.stopped === true }));
 			}
 			if (fs.existsSync(logPath)) lines.push(`Log: ${logPath}`);
 			if (fs.existsSync(eventsPath)) lines.push(`Events: ${eventsPath}`);
