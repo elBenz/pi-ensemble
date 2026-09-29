@@ -1,0 +1,11 @@
+{
+  "subagents": {
+    "agentOverrides": {
+      "worker": {
+        "model": "openai-codex/gpt-6-sol",
+        "thinking": "medium",
+        "defaultContext": "fresh"
+      }
+    }
+  }
+}
