@@ -1,0 +1,8 @@
+{
+  "behavior": "queue",
+  "fixture": "../../fixtures/queue-recovery",
+  "allowed": [
+    "src/queue.mjs",
+    "src/service.mjs"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "behavior": "pipeline",
+  "fixture": "../../fixtures/artifact-pipeline",
+  "allowed": [
+    "src/records.mjs",
+    "src/publish.mjs"
+  ]
+}

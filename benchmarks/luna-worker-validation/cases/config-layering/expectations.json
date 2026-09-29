@@ -1,0 +1,10 @@
+{
+  "behavior": "config",
+  "fixture": "../../fixtures/config-layering",
+  "workerTests": "worker.test.mjs",
+  "allowed": [
+    "src/schema.mjs",
+    "src/loader.mjs",
+    "worker.test.mjs"
+  ]
+}

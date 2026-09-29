@@ -1,0 +1,7 @@
+{
+  "behavior": "boundary",
+  "fixture": "../../fixtures/replay-boundary",
+  "allowed": [
+    "boundary.mjs"
+  ]
+}

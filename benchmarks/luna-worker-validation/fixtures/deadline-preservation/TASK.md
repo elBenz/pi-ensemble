@@ -1,0 +1,2 @@
+Fix deadline.mjs. launchOptions must inherit remaining parent workflow time (minimum 1ms) only when child timeoutMs, child maxRuntimeMs, and agent defaultTimeoutMs are all absent. Preserve explicit zero and unrelated parameters; do not mutate arguments. No parent deadline means no inherited timeout. Change only deadline.mjs. Run node --test focused.test.mjs.
+Inspect source independently. No child agents. Preserve existing behavior, defaults, explicit zero, and error propagation. Completion prose is fine.

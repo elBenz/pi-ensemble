@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "source": "/private/tmp/pi-gpt6-live.hXFZeN/campaign",
+  "observedAt": "2026-09-28",
+  "screeningAttempts": 18,
+  "probes": 3,
+  "totalBenchmarkCost": 1.6611026999999998,
+  "budgetCharge": 1.661103,
+  "remainingBudget": 23.338897,
+  "historicalAccounting": {
+    "knownSpend": 1.729328,
+    "reservation": 16.4,
+    "budgetCharge": 18.129328,
+    "measuredTotal": null,
+    "includedInNewAllowance": false
+  },
+  "groups": {
+    "worker-component/astra-worker": {
+      "attempts": 3,
+      "accepted": 3,
+      "failures": 0,
+      "transportFailures": 0,
+      "totalCost": 0.206608,
+      "wallTimeMs": 83579.50624900003,
+      "cumulativeOutputTokens": 1743,
+      "peakContextLoad": 2148,
+      "tailBreaches": 0,
+      "acceptanceRate": 1,
+      "costPerAccepted": 0.06886933333333334,
+      "meanCostPerAttempt": 0.06886933333333334,
+      "medianSeconds": 25.99399262500007,
+      "acceptedMedianSeconds": 25.99399262500007,
+      "roleCosts": {
+        "worker": 0.206608
+      }
+    },
+    "worker-component/sol-worker": {
+      "attempts": 3,
+      "accepted": 3,
+      "failures": 0,
+      "transportFailures": 0,
+      "totalCost": 0.0618904,
+      "wallTimeMs": 79593.76954199998,
+      "cumulativeOutputTokens": 1895,
+      "peakContextLoad": 3910,
+      "tailBreaches": 0,
+      "acceptanceRate": 1,
+      "costPerAccepted": 0.02063013333333333,
+      "meanCostPerAttempt": 0.02063013333333333,
+      "medianSeconds": 29.099002292000005,
+      "acceptedMedianSeconds": 29.099002292000005,
+      "roleCosts": {
+        "worker": 0.0618904
+      }
+    },
+    "worker-component/luna-worker": {
+      "attempts": 3,
+      "accepted": 0,
+      "failures": 3,
+      "transportFailures": 0,
+      "totalCost": 0.00298882,
+      "wallTimeMs": 57756.53162499999,
+      "cumulativeOutputTokens": 1103,
+      "peakContextLoad": 3603,
+      "tailBreaches": 0,
+      "acceptanceRate": 0,
+      "costPerAccepted": null,
+      "meanCostPerAttempt": 0.0009962733333333334,
+      "medianSeconds": 18.403066124999896,
+      "acceptedMedianSeconds": null,
+      "roleCosts": {
+        "worker": 0.00298882
+      }
+    },
+    "orchestrated/astra-worker": {
+      "attempts": 3,
+      "accepted": 1,
+      "failures": 2,
+      "transportFailures": 0,
+      "totalCost": 0.42905199999999993,
+      "wallTimeMs": 158482.098542,
+      "cumulativeOutputTokens": 2779,
+      "peakContextLoad": 2527,
+      "tailBreaches": 0,
+      "acceptanceRate": 0.3333333333333333,
+      "costPerAccepted": 0.42905199999999993,
+      "meanCostPerAttempt": 0.1430173333333333,
+      "medianSeconds": 35.93526454199996,
+      "acceptedMedianSeconds": 94.91784675000002,
+      "roleCosts": {
+        "parent": 0.21377599999999994,
+        "worker": 0.158198,
+        "reviewer": 0.05707799999999999
+      }
+    },
+    "orchestrated/sol-worker": {
+      "attempts": 3,
+      "accepted": 3,
+      "failures": 0,
+      "transportFailures": 0,
+      "totalCost": 0.541412,
+      "wallTimeMs": 271825.24108300003,
+      "cumulativeOutputTokens": 5640,
+      "peakContextLoad": 2697,
+      "tailBreaches": 0,
+      "acceptanceRate": 1,
+      "costPerAccepted": 0.18047066666666667,
+      "meanCostPerAttempt": 0.18047066666666667,
+      "medianSeconds": 88.608172875,
+      "acceptedMedianSeconds": 88.608172875,
+      "roleCosts": {
+        "parent": 0.27834000000000003,
+        "worker": 0.06064599999999999,
+        "reviewer": 0.20242599999999994
+      }
+    },
+    "orchestrated/luna-worker": {
+      "attempts": 3,
+      "accepted": 2,
+      "failures": 1,
+      "transportFailures": 0,
+      "totalCost": 0.41070768,
+      "wallTimeMs": 280851.512875,
+      "cumulativeOutputTokens": 4853,
+      "peakContextLoad": 3859,
+      "tailBreaches": 0,
+      "acceptanceRate": 0.6666666666666666,
+      "costPerAccepted": 0.20535384,
+      "meanCostPerAttempt": 0.13690256,
+      "medianSeconds": 92.83446983299999,
+      "acceptedMedianSeconds": 105.03390833350001,
+      "roleCosts": {
+        "parent": 0.272008,
+        "worker": 0.003377679999999994,
+        "reviewer": 0.13532200000000003
+      }
+    }
+  },
+  "artifactSha256": "25a5891172d3aabb76d4f5037cc666ba49b3b3743aacc2bf6a79f8b4d69c5aeb",
+  "ledgerSha256": "f708a5b38d89448d88d78fee9015875aa891aa15a7461165afc9666d82bd0a27"
+}

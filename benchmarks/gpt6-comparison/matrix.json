@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "gpt6-worker-comparison",
+  "status": "offline-preparation-only",
+  "launchAuthorized": false,
+  "pricingObservedAt": "2026-09-28",
+  "pricingBasis": "Standard API-equivalent USD per million tokens; not Codex subscription billing. Reverify before launch. Excludes tools, fast/regional processing and long-context premiums.",
+  "models": {
+    "astra": {
+      "route": { "modelTier": "GPT-6 Astra", "model": "openai-codex/gpt-6-astra", "thinkingLevel": "medium" },
+      "pricingReference": { "currency": "USD", "unit": "per-million-tokens", "effectiveAt": "2026-09-28", "source": "https://developers.openai.com/api/docs/models/gpt-6-astra", "input": 10, "output": 50, "cacheRead": 1, "cacheWrite": 12.5 }
+    },
+    "sol": {
+      "route": { "modelTier": "GPT-6 Sol", "model": "openai-codex/gpt-6-sol", "thinkingLevel": "medium" },
+      "pricingReference": { "currency": "USD", "unit": "per-million-tokens", "effectiveAt": "2026-09-28", "source": "https://developers.openai.com/api/docs/models/gpt-6-sol", "input": 2, "output": 10, "cacheRead": 0.2, "cacheWrite": 2.5 }
+    },
+    "luna": {
+      "route": { "modelTier": "GPT-6 Luna", "model": "openai-codex/gpt-6-luna", "thinkingLevel": "medium" },
+      "pricingReference": { "currency": "USD", "unit": "per-million-tokens", "effectiveAt": "2026-09-28", "source": "https://developers.openai.com/api/docs/models/gpt-6-luna", "input": 0.1, "output": 0.5, "cacheRead": 0.01, "cacheWrite": 0.125 }
+    }
+  },
+  "arms": [
+    { "id": "astra-worker", "worker": "astra" },
+    { "id": "sol-worker", "worker": "sol" },
+    { "id": "luna-worker", "worker": "luna" }
+  ],
+  "workloads": [
+    { "id": "worker-deadline", "group": "worker-component", "stage": "screening", "sourceCase": "../delivery/worker-deadline/case.json" },
+    { "id": "worker-boundary", "group": "worker-component", "stage": "finalist-additional", "sourceCase": "../delivery/worker-boundary/case.json" },
+    { "id": "worker-records", "group": "worker-component", "stage": "finalist-additional", "sourceCase": "../delivery/worker-records/case.json" },
+    { "id": "parent-deadline", "group": "orchestrated", "stage": "screening", "sourceCase": "../judgment/parent-deadline/case.json" },
+    { "id": "parent-queue", "group": "orchestrated", "stage": "finalist-additional", "sourceCase": "../judgment/parent-queue/case.json" },
+    { "id": "parent-attempts", "group": "orchestrated", "stage": "finalist-additional", "sourceCase": "../judgment/parent-attempts/case.json" }
+  ],
+  "fixedWorkflowRoles": { "parent": "astra", "reviewer": "astra", "scout": "astra" },
+  "repetitions": { "screeningPerArmPerGroup": 3, "finalistPerWorkloadPerArm": 3 },
+  "deferred": [
+    { "id": "luna-to-sol-escalation", "reason": "Existing parent rubric requires exactly one worker then one reviewer and rejects failed children. Add and validate an escalation-specific protocol/rubric before measuring recovery." },
+    { "id": "single-agent-vs-orchestrated", "reason": "Worker and parent groups use different fixtures and acceptance contracts. Their results cannot measure orchestration overhead or prove a single-agent baseline against multi-agent arms." },
+    { "id": "ambiguous-multi-file-work", "reason": "Existing corpus is reduced, bounded work. Add a matched repository-scale corpus before generalizing to architecture discovery or multi-file implementation." }
+  ]
+}

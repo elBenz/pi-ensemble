@@ -1,0 +1,23 @@
+{
+  "id": "config-layering",
+  "agentRole": "worker",
+  "route": {
+    "modelTier": "UNCONFIGURED",
+    "model": "unconfigured/luna-worker-corpus",
+    "thinkingLevel": "medium"
+  },
+  "prompt": "Read TASK.md. Inspect source independently, implement the complete feature and preservation fixes, create worker.test.mjs, and run node --test focused.test.mjs worker.test.mjs. Do not delegate or launch child agents. Edit only declared source files and your new worker.test.mjs; never modify focused.test.mjs, TASK.md or metadata. Summarize changes and validation in prose.",
+  "fixture": "../../fixtures/config-layering",
+  "evaluator": {
+    "kind": "command",
+    "command": "node",
+    "args": [
+      "{caseDir}/../../evaluator.mjs",
+      "{caseDir}/expectations.json"
+    ],
+    "timeoutMs": 15000,
+    "requireStructuredVerdict": true
+  },
+  "timeoutMs": 240000,
+  "mutationPolicy": "require"
+}

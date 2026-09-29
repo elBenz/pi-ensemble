@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "deadline-preservation",
+      "case": "cases/deadline-preservation/case.json",
+      "kind": "delivery-adaptation"
+    },
+    {
+      "id": "replay-boundary",
+      "case": "cases/replay-boundary/case.json",
+      "kind": "delivery-adaptation"
+    },
+    {
+      "id": "record-validation",
+      "case": "cases/record-validation/case.json",
+      "kind": "delivery-adaptation"
+    },
+    {
+      "id": "config-layering",
+      "case": "cases/config-layering/case.json",
+      "kind": "multi-file"
+    },
+    {
+      "id": "queue-recovery",
+      "case": "cases/queue-recovery/case.json",
+      "kind": "multi-file"
+    },
+    {
+      "id": "artifact-pipeline",
+      "case": "cases/artifact-pipeline/case.json",
+      "kind": "multi-file"
+    }
+  ]
+}
