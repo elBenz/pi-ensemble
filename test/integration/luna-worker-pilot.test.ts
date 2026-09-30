@@ -63,18 +63,30 @@ async function run(background = false, extraVerify: Array<{ id: string; command:
 	return result.details.workflow!.value as any;
 }
 
-it("discovers project Sol-medium default without replacing worker persona or reviewer", () => {
+it("discovers project Sol-high delegate and Sol-medium worker without replacing personas or independent roles", () => {
 	const agents = discoverAgents(cwd, "project").agents;
 	const worker = agents.find(a => a.name === "worker")!;
-	assert.equal(worker.model, "openai-codex/gpt-6-sol");
+	assert.equal(worker.model, "openai-codex/gpt-6.1-sol");
 	assert.equal(worker.thinking, "medium");
 	assert.equal(worker.defaultContext, "fresh");
 	assert.match(worker.systemPrompt, /sole writer/);
+	const delegate = agents.find(a => a.name === "delegate")!;
+	assert.equal(delegate.model, "openai-codex/gpt-6.1-sol");
+	assert.equal(delegate.thinking, "high");
+	assert.deepEqual(delegate.fallbackModels, ["openai-codex/gpt-5.6-luna:medium"]);
 	const baselineCwd = createTempDir("pilot-baseline-");
 	try {
 		const baseline = discoverAgents(baselineCwd, "project").agents;
-		assert.deepEqual(agents.find(a => a.name === "reviewer"), baseline.find(a => a.name === "reviewer"));
-		assert.equal(worker.systemPrompt, baseline.find(a => a.name === "worker")?.systemPrompt);
+		for (const role of ["reviewer", "oracle", "scout", "researcher"]) {
+			assert.deepEqual(agents.find(a => a.name === role), baseline.find(a => a.name === role));
+		}
+		for (const role of ["worker", "delegate"]) {
+			const actual = agents.find(a => a.name === role)!;
+			const original = baseline.find(a => a.name === role)!;
+			for (const field of ["systemPrompt", "systemPromptMode", "tools", "inheritProjectContext", "inheritSkills"] as const) {
+				assert.deepEqual(actual[field], original[field], `${role}.${field} preserved`);
+			}
+		}
 	} finally { removeTempDir(baselineCwd); }
 });
 
@@ -129,7 +141,7 @@ it("repairs failed host acceptance once with fresh Sol, same cwd and Luna eviden
 	assert.match(value.attempts[0].results[0].acceptance.verifyRuns[0].stderr, /expected fixed/);
 	const [luna, sol] = value.attempts.map((a: any) => a.results[0]);
 	assert.equal(luna.model, "openai-codex/gpt-6-luna:medium");
-	assert.equal(sol.model, "openai-codex/gpt-6-sol:medium");
+	assert.equal(sol.model, "openai-codex/gpt-6.1-sol:medium");
 	assert.equal(luna.thinking, "medium");
 	assert.equal(sol.thinking, "medium");
 	assert.equal(luna.context, "fresh");
@@ -238,6 +250,7 @@ it("existing provider fallback stays separate from quality repair", async () => 
 	assert.equal(value.repairs, 0);
 	assert.equal(mock.callCount(), 2);
 	assert.deepEqual(value.attempts[0].results[0].modelAttempts.map((a: any) => a.success), [false, true]);
+	assert.equal(value.attempts[0].results[0].modelAttempts[1].model, "openai-codex/gpt-6-sol:medium");
 });
 
 it("provider failure after mutation preserves replay barrier and never launches repair", async () => {

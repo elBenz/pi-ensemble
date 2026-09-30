@@ -1,14 +1,19 @@
 # Project-local Luna worker pilot
 
-Use `/luna-worker <bounded task or handoff path>` in this checkout after trusting
-project configuration and `/reload`. This is an explicit opt-in lightweight experiment, not the default worker route,
-a new routing engine, or a global model profile. Project worker defaults to
-GPT-6 Sol-medium with fresh context; only this recipe selects Luna.
+Use the global `/luna-worker <bounded task or handoff path>` shortcut in this checkout after trusting
+project configuration and `/reload`. Project `prompts: ["-prompts/luna-worker.md"]`
+excludes the retained project copy, leaving the global shortcut active without a collision.
+This is an explicit opt-in lightweight experiment, not the default worker route,
+a new routing engine, or a global model profile. Global and project worker defaults use
+GPT-6.1 Sol-medium with fresh context; only this recipe selects Luna.
 
-- Parent: Astra-medium for scope, architecture, consequential decisions and integration.
-  The pilot does not change the current parent model; select/confirm it before launch.
-- Worker: GPT-6 Luna-medium, fresh context, existing worker persona.
-- Failed executable acceptance: one fresh GPT-6 Sol-medium repair in the **same cwd** only when every host check completed normally (passed or failed with finite exit code), at least one failed, and any failed criterion is explicitly reported not-satisfied with evidence.
+- Parent/startup and delegated planning: GPT-6.1 Sol-high for scope, architecture,
+  decisions and coordination. Confirm active parent selection before launch; startup settings
+  do not switch an existing session. Planning adoption is controlled, not proven benchmark
+  equivalence to Astra or guaranteed savings. Use the unchanged Astra-medium `oracle`
+  for independent consequential advice.
+- Pilot worker: GPT-6 Luna-medium, fresh context, existing worker persona.
+- Failed executable acceptance: one fresh GPT-6.1 Sol-medium repair in the **same cwd** only when every host check completed normally (passed or failed with finite exit code), at least one failed, and any failed criterion is explicitly reported not-satisfied with evidence.
 - Passing acceptance: return `review-ready`; parent arranges risk-appropriate review
   and integration. Reviewer mapping is unchanged.
 - Execution/provider failures, timed-out/signaled or incomplete host checks, missing/malformed evidence, unresolved requirements, interrupted work or a
@@ -65,17 +70,22 @@ This reserved marker is not an accounting counter. The acceptance engine is unch
 
 ## Verify routing after reload
 
-Run `/subagents-models worker` and `/subagents-models reviewer`; compare reviewer
-against the pre-pilot mapping. `pi --list-models luna` and `pi --list-models sol`
+Run `/subagents-models delegate`, `/subagents-models worker` and
+`/subagents-models reviewer`; expect Sol-high planning and Sol-medium fresh implementation,
+with reviewer unchanged from the pre-pilot Astra-medium mapping. `pi --list-models luna` and `pi --list-models sol`
 inspect the installed registry without inference. Do not use historical benchmark
 runtime/catalog patches or refresh commands that issue paid probes.
 
-`.pi/settings.json` sets the normal worker to Sol-medium with fresh context.
+Global and `.pi/settings.json` worker overrides set the normal worker to GPT-6.1 Sol-medium with fresh context.
 Builtin overrides replace bundled `thinking: high`; custom worker frontmatter can
 still outrank settings. This opt-in workflow explicitly requests Luna `:medium` and fresh
-context for its first child, then Sol `:medium` for a qualifying repair.
+context for its first child, then `openai-codex/gpt-6.1-sol:medium` with fresh context for a qualifying repair.
 Inspect resolved `results[].model`, `thinking`, `context` and distinct session files.
-Worker tools/persona and reviewer overrides are preserved.
+Project delegate override pins model/thinking and retains the existing Luna-medium provider
+fallback explicitly: project role overrides replace global role overrides rather than merging.
+Worker/delegate personas and
+independent Astra-medium reviewer/oracle routes are preserved. Scout/researcher routes
+and existing provider fallback chains remain unchanged.
 
 `fallbackModels` remains provider/model-failure recovery with its existing mutation
 replay barriers. This recipe neither installs Sol as fallback nor changes those
@@ -109,4 +119,4 @@ child lacking host-counter access should still implement and report available
 implementation evidence; actual runtime/accounting errors require parent assessment.
 
 To stop the experiment, do not invoke `/luna-worker`. Normal project worker routing
-remains Sol-medium. No global settings or agent persona need restoring.
+remains GPT-6.1 Sol-medium. No global settings or agent persona need restoring.

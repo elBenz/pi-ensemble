@@ -2,9 +2,9 @@
 description: Explicit opt-in lightweight Luna worker experiment with host acceptance and one Sol repair
 argument-hint: "<bounded task or handoff path>"
 ---
-Run the explicit opt-in lightweight worker experiment for: $@. This does not change the project Sol-medium worker default.
+Run the explicit opt-in lightweight worker experiment for: $@. This does not change the project GPT-6.1 Sol-medium worker default.
 
-Read `docs/luna-worker-pilot.md` and `src/workflows/luna-worker-pilot.ts` before launching. Parent remains Astra-medium for scope, architecture, unresolved requirements and integration; retain existing reviewer mapping.
+Read `docs/luna-worker-pilot.md` and `src/workflows/luna-worker-pilot.ts` before launching. Parent retains current model/thinking selection for scope, architecture, unresolved requirements and integration; use the existing Astra-medium oracle for consequential advice and retain existing reviewer mapping.
 
 Build the contract from the requested behavior, relevant entry points, preservation invariants, allowed files/non-goals, clarification conditions and independent acceptance commands. Resolve material ambiguity with the user first. Worker owns investigation, implementation and tests; give a contract rather than prescribed patches.
 

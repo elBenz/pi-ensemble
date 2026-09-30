@@ -93,7 +93,7 @@ const [luna] = await runs.all([{ key: "luna-implementation", ...common, acceptan
 attempts.push(luna);
 if (accepted(luna)) return receipt("review-ready");
 if (!repairable(luna)) return receipt("parent-decision");
-const [sol] = await runs.all([{ key: "sol-repair", ...common, acceptance: policy("sol"), model: "openai-codex/gpt-6-sol:medium",
+const [sol] = await runs.all([{ key: "sol-repair", ...common, acceptance: policy("sol"), model: "openai-codex/gpt-6.1-sol:medium",
   task: task + "\\n\\nOne bounded quality repair of existing Luna changes. Inspect current workspace/diff; preserve useful changes and evidence. Fresh session, not a replay or resume. Repair only concrete acceptance failures below. Return unresolved requirements to parent.\\n" + JSON.stringify({ output: luna.output, artifactPaths: luna.artifactPaths, acceptance: luna.results[0].acceptance }) }]);
 attempts.push(sol);
 return receipt(accepted(sol) ? "review-ready" : "parent-decision");
